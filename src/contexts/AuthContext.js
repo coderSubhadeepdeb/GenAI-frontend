@@ -600,9 +600,14 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     try {
       const result = await signInWithEmailAndPassword(auth, email, password);
-      return { success: true, user: result.user };
+      console.log('✅ Login successful:', result.user.email);
+      
+      // Redirect to home (social feed) instead of dashboard
+      navigate('/'); // Changed from navigate('/dashboard')
+      
+      return { success: true };
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ Login failed:', error);
       return { success: false, error: error.message };
     }
   };

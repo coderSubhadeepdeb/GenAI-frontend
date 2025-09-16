@@ -6,52 +6,29 @@ import { db } from '../config/firebase';
 import InitialsAvatar from './common/InitialsAvatar';
 
 const Home = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, userProfile } = useAuth();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentSlide, setCurrentSlide] = useState(0);
+  const [filter, setFilter] = useState('all');
 
-  // Auto-advance slideshow
-  useEffect(() => {
-    if (posts.length === 0) return;
-    
-    const interval = setInterval(() => {
-      setCurrentSlide(prev => (prev + 1) % posts.length);
-    }, 5000); // Auto-advance every 5 seconds
-
-    return () => clearInterval(interval);
-  }, [posts.length]);
-
-  // Fetch latest posts
+  // Fetch posts for social feed
   useEffect(() => {
     const postsRef = collection(db, 'posts');
-    const q = query(postsRef, orderBy('createdAt', 'desc'), limit(15));
+    const q = query(postsRef, orderBy('createdAt', 'desc'), limit(30));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const latestPosts = snapshot.docs.map(doc => ({
+      const feedPosts = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         createdAt: doc.data().createdAt?.toDate?.() || new Date()
       }));
       
-      setPosts(latestPosts);
+      setPosts(feedPosts);
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
-
-  const nextSlide = () => {
-    setCurrentSlide(prev => (prev + 1) % posts.length);
-  };
-
-  const prevSlide = () => {
-    setCurrentSlide(prev => (prev - 1 + posts.length) % posts.length);
-  };
-
-  const goToSlide = (index) => {
-    setCurrentSlide(index);
-  };
 
   const formatTimeAgo = (date) => {
     if (!date) return 'Just now';
@@ -64,340 +41,248 @@ const Home = () => {
     return `${Math.floor(diffInSeconds / 86400)}d`;
   };
 
-  return (
-    <div style={{ 
-      minHeight: '100vh', 
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      position: 'relative'
-    }}>
-      {/* Floating Header */}
-      <header style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        background: 'rgba(255, 255, 255, 0.95)',
-        backdropFilter: 'blur(10px)',
-        zIndex: 1000,
-        padding: '1rem 0'
+  // For non-authenticated users, show welcome page
+  if (!currentUser) {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        backgroundColor: '#f8f9fa' 
       }}>
-        <div style={{ 
-          maxWidth: '1200px', 
-          margin: '0 auto', 
+        <div style={{ textAlign: 'center', maxWidth: '500px', padding: '2rem' }}>
+          <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🎨</div>
+          <h2 style={{ color: '#333', marginBottom: '1rem' }}>Welcome to CraftAI Studio</h2>
+          <p style={{ color: '#666', marginBottom: '2rem', fontSize: '1.1rem' }}>
+            Discover amazing artisan creations and join our creative community!
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+            <Link 
+              to="/signup"
+              style={{
+                backgroundColor: '#4ecdc4',
+                color: 'white',
+                padding: '0.75rem 1.5rem',
+                textDecoration: 'none',
+                borderRadius: '8px',
+                fontWeight: 'bold'
+              }}
+            >
+              Join Community
+            </Link>
+            <Link 
+              to="/login"
+              style={{
+                backgroundColor: 'transparent',
+                color: '#4ecdc4',
+                border: '2px solid #4ecdc4',
+                padding: '0.75rem 1.5rem',
+                textDecoration: 'none',
+                borderRadius: '8px',
+                fontWeight: 'bold'
+              }}
+            >
+              Sign In
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#f8f9fa' }}>
+      {/* Header */}
+      <header style={{
+        backgroundColor: '#ffffff',
+        borderBottom: '1px solid #e9ecef',
+        padding: '1rem 0',
+        position: 'sticky',
+        top: 0,
+        zIndex: 1000,
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+      }}>
+        <div style={{
+          maxWidth: '1200px',
+          margin: '0 auto',
           padding: '0 2rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <h1 style={{ 
-              margin: 0, 
-              fontSize: '1.8rem', 
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              fontWeight: 'bold'
-            }}>
+          {/* Left */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <h1 style={{ margin: 0, color: '#4ecdc4', fontSize: '1.8rem', fontWeight: 'bold' }}>
               🎨 CraftAI Studio
             </h1>
             <div style={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              color: 'white',
-              padding: '4px 12px',
-              borderRadius: '12px',
-              fontSize: '0.75rem',
+              backgroundColor: '#e8f8f6',
+              color: '#4ecdc4',
+              padding: '0.25rem 0.75rem',
+              borderRadius: '20px',
+              fontSize: '0.8rem',
               fontWeight: 'bold'
             }}>
-              LIVE FEED
+              Community Feed
             </div>
           </div>
-          
-          <nav style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            {currentUser ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <span style={{ color: '#666', fontSize: '0.9rem' }}>
-                  👋 {currentUser.displayName || 'Creator'}
-                </span>
-                <Link 
-                  to="/dashboard" 
-                  style={{ 
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    color: 'white',
-                    textDecoration: 'none',
-                    padding: '0.75rem 1.5rem',
-                    borderRadius: '25px',
-                    fontWeight: 'bold',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  🚀 Dashboard
-                </Link>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <Link 
-                  to="/login" 
-                  style={{ 
-                    color: '#667eea',
-                    textDecoration: 'none',
-                    padding: '0.75rem 1.5rem',
-                    fontSize: '0.9rem',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  Sign In
-                </Link>
-                <Link 
-                  to="/signup" 
-                  style={{ 
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    color: 'white',
-                    textDecoration: 'none',
-                    padding: '0.75rem 1.5rem',
-                    borderRadius: '25px',
-                    fontWeight: 'bold',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  Join Now
-                </Link>
-              </div>
-            )}
-          </nav>
+
+          {/* Right */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ color: '#666', fontSize: '0.9rem' }}>
+              👋 {userProfile?.displayName || 'Artisan'}
+            </span>
+            <Link 
+              to="/dashboard" 
+              style={{ 
+                backgroundColor: '#4ecdc4',
+                color: 'white',
+                textDecoration: 'none',
+                padding: '0.75rem 1.5rem',
+                borderRadius: '8px',
+                fontWeight: 'bold',
+                fontSize: '0.9rem'
+              }}
+            >
+              🚀 Dashboard
+            </Link>
+          </div>
         </div>
       </header>
 
-      {/* Main Feed Container */}
-      <main style={{ 
-        paddingTop: '100px',
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '100px 2rem 2rem'
-      }}>
+      {/* Social Feed */}
+      <main style={{ maxWidth: '700px', margin: '2rem auto', padding: '0 1rem' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', color: 'white' }}>
+          <div style={{ textAlign: 'center', padding: '3rem' }}>
             <div style={{ 
-              fontSize: '4rem', 
+              fontSize: '3rem', 
               marginBottom: '1rem',
-              animation: 'pulse 2s infinite'
+              animation: 'spin 2s linear infinite'
             }}>
               🎨
             </div>
-            <h2 style={{ margin: '0 0 0.5rem 0', fontSize: '1.8rem' }}>
-              Loading Amazing Creations...
-            </h2>
-            <p style={{ opacity: 0.8, fontSize: '1.1rem' }}>
-              Discovering the latest artisan masterpieces
-            </p>
+            <h3>Loading community feed...</h3>
+            <p style={{ color: '#666' }}>Discovering amazing artisan creations</p>
+            <style>{`
+              @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+              }
+            `}</style>
           </div>
         ) : posts.length === 0 ? (
-          <div style={{ textAlign: 'center', color: 'white' }}>
-            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🎨</div>
-            <h2 style={{ margin: '0 0 1rem 0', fontSize: '2rem' }}>
-              Be the First Creator!
-            </h2>
-            <p style={{ opacity: 0.8, fontSize: '1.2rem', marginBottom: '2rem' }}>
-              Start the community by sharing your amazing work
+          <div style={{ textAlign: 'center', padding: '3rem' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎨</div>
+            <h3>No posts yet</h3>
+            <p style={{ color: '#666', marginBottom: '2rem' }}>
+              Be the first to share your amazing work with the community!
             </p>
-            {!currentUser && (
-              <Link 
-                to="/signup"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  color: 'white',
-                  border: '2px solid white',
-                  padding: '1rem 2rem',
-                  textDecoration: 'none',
-                  borderRadius: '30px',
-                  fontSize: '1.1rem',
-                  fontWeight: 'bold',
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
-                🚀 Join & Create
-              </Link>
-            )}
+            <Link 
+              to="/dashboard"
+              style={{
+                backgroundColor: '#4ecdc4',
+                color: 'white',
+                padding: '0.75rem 1.5rem',
+                textDecoration: 'none',
+                borderRadius: '8px',
+                fontWeight: 'bold'
+              }}
+            >
+              Create Your First Post
+            </Link>
           </div>
         ) : (
-          <div style={{ 
-            maxWidth: '500px', 
-            width: '100%',
-            position: 'relative'
-          }}>
-            {/* Story-Style Slideshow */}
-            <div style={{
-              position: 'relative',
-              borderRadius: '20px',
-              overflow: 'hidden',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-              background: 'white',
-              aspectRatio: '9/16',
-              maxHeight: '80vh'
-            }}>
-              {/* Post Image/Content */}
-              <div style={{
-                position: 'relative',
-                width: '100%',
-                height: '70%',
-                background: posts[currentSlide]?.imageUrl 
-                  ? `url(${posts[currentSlide].imageUrl})` 
-                  : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                display: 'flex',
-                alignItems: 'flex-end'
-              }}>
-                {/* Progress Bars */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {posts.map((post) => (
+              <article
+                key={post.id}
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                  transition: 'transform 0.2s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                {/* Post Header */}
                 <div style={{
-                  position: 'absolute',
-                  top: '15px',
-                  left: '15px',
-                  right: '15px',
                   display: 'flex',
-                  gap: '4px',
-                  zIndex: 10
+                  alignItems: 'center',
+                  padding: '1.5rem',
+                  borderBottom: '1px solid #f0f0f0'
                 }}>
-                  {posts.map((_, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        flex: 1,
-                        height: '3px',
-                        borderRadius: '2px',
-                        background: index === currentSlide 
-                          ? 'white' 
-                          : 'rgba(255,255,255,0.4)',
-                        cursor: 'pointer'
-                      }}
-                      onClick={() => goToSlide(index)}
-                    />
-                  ))}
-                </div>
-
-                {/* Navigation Buttons */}
-                <button
-                  onClick={prevSlide}
-                  style={{
-                    position: 'absolute',
-                    left: '15px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'rgba(255,255,255,0.2)',
-                    border: 'none',
-                    color: 'white',
-                    borderRadius: '50%',
-                    width: '40px',
-                    height: '40px',
-                    cursor: 'pointer',
-                    fontSize: '18px',
-                    backdropFilter: 'blur(10px)'
-                  }}
-                >
-                  ←
-                </button>
-                <button
-                  onClick={nextSlide}
-                  style={{
-                    position: 'absolute',
-                    right: '15px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'rgba(255,255,255,0.2)',
-                    border: 'none',
-                    color: 'white',
-                    borderRadius: '50%',
-                    width: '40px',
-                    height: '40px',
-                    cursor: 'pointer',
-                    fontSize: '18px',
-                    backdropFilter: 'blur(10px)'
-                  }}
-                >
-                  →
-                </button>
-
-                {/* Gradient Overlay */}
-                <div style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: '50%',
-                  background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
-                  zIndex: 1
-                }}></div>
-              </div>
-
-              {/* Post Info */}
-              <div style={{ 
-                padding: '20px',
-                height: '30%',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between'
-              }}>
-                {/* Author */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <InitialsAvatar
-                    name={posts[currentSlide]?.authorName || 'Artist'}
-                    imageUrl={posts[currentSlide]?.authorAvatar}
+                    name={post.authorName || 'Artist'}
+                    imageUrl={post.authorAvatar}
                     size={45}
                     fontSize={18}
+                    style={{ marginRight: '1rem' }}
                   />
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 'bold', fontSize: '1rem' }}>
-                      {posts[currentSlide]?.authorName || 'Anonymous Artist'}
+                      {post.authorName || 'Anonymous Artist'}
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: '#666' }}>
-                      {formatTimeAgo(posts[currentSlide]?.createdAt)} • {posts[currentSlide]?.craftType || 'Artisan'}
+                    <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                      {formatTimeAgo(post.createdAt)} • {post.craftType || 'Artisan'}
                     </div>
-                  </div>
-                  <div style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#999' }}>
-                    {currentSlide + 1} / {posts.length}
                   </div>
                 </div>
 
+                {/* Post Image */}
+                {post.imageUrl && (
+                  <img
+                    src={post.imageUrl}
+                    alt={post.title}
+                    style={{
+                      width: '100%',
+                      maxHeight: '500px',
+                      objectFit: 'cover'
+                    }}
+                  />
+                )}
+
                 {/* Post Content */}
-                <div>
-                  <h3 style={{ 
-                    margin: '0 0 8px 0', 
-                    fontSize: '1.2rem',
+                <div style={{ padding: '1.5rem' }}>
+                  <h2 style={{ 
+                    margin: '0 0 0.75rem 0', 
+                    fontSize: '1.3rem',
                     fontWeight: 'bold',
-                    color: '#333',
-                    lineHeight: '1.3'
+                    color: '#333'
                   }}>
-                    {posts[currentSlide]?.title}
-                  </h3>
+                    {post.title}
+                  </h2>
                   
-                  {posts[currentSlide]?.description && (
+                  {post.description && (
                     <p style={{ 
-                      margin: '0 0 12px 0', 
+                      margin: '0 0 1rem 0', 
                       color: '#666', 
-                      fontSize: '0.9rem',
-                      lineHeight: '1.4',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden'
+                      fontSize: '1rem',
+                      lineHeight: '1.6'
                     }}>
-                      {posts[currentSlide].description}
+                      {post.description}
                     </p>
                   )}
 
                   {/* Tags */}
-                  {posts[currentSlide]?.tags && (
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {posts[currentSlide].tags.slice(0, 3).map(tag => (
+                  {post.tags && post.tags.length > 0 && (
+                    <div style={{ 
+                      display: 'flex', 
+                      flexWrap: 'wrap', 
+                      gap: '0.5rem',
+                      marginBottom: '1rem'
+                    }}>
+                      {post.tags.map((tag) => (
                         <span
                           key={tag}
                           style={{
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                            color: 'white',
-                            padding: '4px 8px',
-                            borderRadius: '12px',
-                            fontSize: '0.7rem',
+                            backgroundColor: '#e8f8f6',
+                            color: '#4ecdc4',
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '15px',
+                            fontSize: '0.85rem',
                             fontWeight: 'bold'
                           }}
                         >
@@ -406,63 +291,30 @@ const Home = () => {
                       ))}
                     </div>
                   )}
-                </div>
 
-                {/* Engagement */}
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: '0.8rem',
-                  color: '#999',
-                  paddingTop: '12px',
-                  borderTop: '1px solid #f0f0f0'
-                }}>
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    <span>❤️ {posts[currentSlide]?.likes || 0}</span>
-                    <span>💬 {posts[currentSlide]?.comments || 0}</span>
-                    <span>📤 {posts[currentSlide]?.shares || 0}</span>
+                  {/* Engagement Stats */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingTop: '1rem',
+                    borderTop: '1px solid #f0f0f0'
+                  }}>
+                    <div style={{ display: 'flex', gap: '1.5rem' }}>
+                      <span style={{ fontSize: '0.9rem', color: '#666' }}>❤️ {post.likes || 0}</span>
+                      <span style={{ fontSize: '0.9rem', color: '#666' }}>💬 {post.comments || 0}</span>
+                      <span style={{ fontSize: '0.9rem', color: '#666' }}>📤 {post.shares || 0}</span>
+                    </div>
+                    <span style={{ fontSize: '0.85rem', color: '#999' }}>
+                      👀 {post.views || 0} views
+                    </span>
                   </div>
-                  <span>👀 {posts[currentSlide]?.views || 0}</span>
                 </div>
-              </div>
-            </div>
-
-            {/* Dots Navigation */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'center',
-              gap: '8px',
-              marginTop: '20px'
-            }}>
-              {posts.map((_, index) => (
-                <button
-                  key={index}
-                  onClick={() => goToSlide(index)}
-                  style={{
-                    width: '12px',
-                    height: '12px',
-                    borderRadius: '50%',
-                    border: 'none',
-                    background: index === currentSlide 
-                      ? 'white' 
-                      : 'rgba(255,255,255,0.5)',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
-                  }}
-                />
-              ))}
-            </div>
+              </article>
+            ))}
           </div>
         )}
       </main>
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-      `}</style>
     </div>
   );
 };

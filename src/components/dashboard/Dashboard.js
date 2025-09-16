@@ -3,12 +3,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import UserProfile from './UserProfile';
 import ProfileSection from './ProfileSection';
-import SocialFeed from './SocialFeed';
 import UserSearch from './UserSearch';
 import ContentCreator from './ContentCreator';
 import AnalyticsSection from './AnalyticsSection';
 import SettingsSection from './SettingsSection';
-import BillingMonitor from './BillingMonitor';
 import AIAssistant from '../chatbot/AIAssistant'; 
 import { useCallback } from 'react'; 
 
@@ -126,7 +124,6 @@ const Dashboard = () => {
     { id: 'profile', name: 'My Profile', icon: '👤' },
     { id: 'posts', name: 'My Posts', icon: '📷' },
     { id: 'create', name: 'Create Post', icon: '➕' },
-    { id: 'feed', name: 'Social Feed', icon: '🌐' },
     { id: 'search', name: 'Find Artisans', icon: '🔍' },
     { id: 'analytics', name: 'Analytics', icon: '📊' },
     { id: 'settings', name: 'Settings', icon: '⚙️' },
@@ -668,13 +665,6 @@ const Dashboard = () => {
                 />
               )}
               
-              {activeTab === 'feed' && (
-                <SocialFeed 
-                  profileData={userProfile}
-                  currentUser={currentUser}
-                />
-              )}
-              
               {activeTab === 'search' && (
                 <UserSearch 
                   currentUser={currentUser}
@@ -699,9 +689,6 @@ const Dashboard = () => {
           </main>
         </div>
       </div>
-
-      {/* BillingMonitor Component - Always visible */}
-      <BillingMonitor />
 
       {/* AI Assistant Component - Conditionally rendered */}
       {isAIAssistantOpen && (
