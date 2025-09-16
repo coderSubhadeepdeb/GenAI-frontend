@@ -1,7 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  orderBy, 
+  limit, 
+  onSnapshot, 
+  doc, 
+  runTransaction, 
+  addDoc, 
+  serverTimestamp, 
+  where, 
+  updateDoc, 
+  increment 
+} from 'firebase/firestore';
 import { db } from '../config/firebase';
 import InitialsAvatar from './common/InitialsAvatar';
 
@@ -9,7 +22,10 @@ const Home = () => {
   const { currentUser, userProfile } = useAuth();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
+  const [commentTexts, setCommentTexts] = useState({});
+  const [showComments, setShowComments] = useState({});
+  const [comments, setComments] = useState({});
+  const [likingPosts, setLikingPosts] = useState(new Set());
 
   // Fetch posts for social feed
   useEffect(() => {
@@ -29,6 +45,165 @@ const Home = () => {
 
     return () => unsubscribe();
   }, []);
+
+  // Fetch comments for a specific post
+  const fetchComments = (postId) => {
+    if (comments[postId]) return; // Already fetched
+
+    const commentsRef = collection(db, 'comments');
+    const q = query(
+      commentsRef, 
+      where('postId', '==', postId), 
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const postComments = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.() || new Date()
+      }));
+      
+      setComments(prev => ({
+        ...prev,
+        [postId]: postComments
+      }));
+    });
+
+    return unsubscribe;
+  };
+
+  // Handle like/unlike with proper atomic updates - FIXED
+  const handleLike = async (postId) => {
+    if (!currentUser || likingPosts.has(postId)) return;
+    
+    setLikingPosts(prev => new Set([...prev, postId]));
+
+    try {
+      const postRef = doc(db, 'posts', postId);
+      
+      await runTransaction(db, async (transaction) => {
+        const postDoc = await transaction.get(postRef);
+        
+        if (!postDoc.exists()) {
+          throw new Error('Post does not exist');
+        }
+
+        const postData = postDoc.data();
+        let currentLikes = postData.likes || 0;
+        let likedBy = postData.likedBy || [];
+        
+        // FIXED: Properly declare userHasLiked within the transaction scope
+        const userHasLiked = likedBy.includes(currentUser.uid);
+        
+        if (userHasLiked) {
+          // Unlike: Remove user from likedBy array and decrease count
+          likedBy = likedBy.filter(uid => uid !== currentUser.uid);
+          currentLikes = Math.max(0, currentLikes - 1); // Prevent negative
+        } else {
+          // Like: Add user to likedBy array and increase count
+          likedBy.push(currentUser.uid);
+          currentLikes = currentLikes + 1;
+        }
+
+        transaction.update(postRef, {
+          likes: currentLikes,
+          likedBy: likedBy
+        });
+      });
+
+      console.log('✅ Post like updated successfully');
+    } catch (error) {
+      console.error('❌ Error updating like:', error);
+    }
+
+    setLikingPosts(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(postId);
+      return newSet;
+    });
+  };
+
+  // Handle comment submission
+  const handleComment = async (postId) => {
+    const commentText = commentTexts[postId];
+    if (!currentUser || !commentText?.trim()) return;
+
+    try {
+      // Add comment to comments collection
+      await addDoc(collection(db, 'comments'), {
+        postId: postId,
+        content: commentText.trim(),
+        authorId: currentUser.uid,
+        authorName: userProfile?.displayName || currentUser.displayName || 'Anonymous',
+        authorAvatar: userProfile?.profileImage || currentUser.photoURL || '',
+        createdAt: serverTimestamp()
+      });
+
+      // Update post comment count
+      const postRef = doc(db, 'posts', postId);
+      await updateDoc(postRef, {
+        comments: increment(1)
+      });
+
+      // Clear comment text
+      setCommentTexts(prev => ({
+        ...prev,
+        [postId]: ''
+      }));
+
+      console.log('✅ Comment added successfully');
+    } catch (error) {
+      console.error('❌ Error adding comment:', error);
+    }
+  };
+
+  // Toggle comments visibility
+  const toggleComments = (postId) => {
+    const isVisible = showComments[postId];
+    
+    setShowComments(prev => ({
+      ...prev,
+      [postId]: !isVisible
+    }));
+
+    // Fetch comments if showing for the first time
+    if (!isVisible && !comments[postId]) {
+      fetchComments(postId);
+    }
+  };
+
+  // Handle share (copy URL to clipboard)
+  const handleShare = async (postId, title) => {
+    try {
+      const postURL = `${window.location.origin}/post/${postId}`;
+      
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(postURL);
+        alert(`"${title}" link copied to clipboard!`);
+      } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = postURL;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert(`"${title}" link copied to clipboard!`);
+      }
+
+      // Update share count
+      const postRef = doc(db, 'posts', postId);
+      await updateDoc(postRef, {
+        shares: increment(1)
+      });
+
+      console.log('✅ Post shared successfully');
+    } catch (error) {
+      console.error('❌ Error sharing post:', error);
+      alert('Failed to copy link. Please try again.');
+    }
+  };
 
   const formatTimeAgo = (date) => {
     if (!date) return 'Just now';
@@ -52,8 +227,8 @@ const Home = () => {
         backgroundColor: '#f8f9fa' 
       }}>
         <div style={{ textAlign: 'center', maxWidth: '500px', padding: '2rem' }}>
-          <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🎨</div>
-          <h2 style={{ color: '#333', marginBottom: '1rem' }}>Welcome to CraftAI Studio</h2>
+          <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🏠</div>
+          <h2 style={{ color: '#333', marginBottom: '1rem' }}>Welcome to KraftHouse</h2>
           <p style={{ color: '#666', marginBottom: '2rem', fontSize: '1.1rem' }}>
             Discover amazing artisan creations and join our creative community!
           </p>
@@ -111,10 +286,9 @@ const Home = () => {
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          {/* Left */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <h1 style={{ margin: 0, color: '#4ecdc4', fontSize: '1.8rem', fontWeight: 'bold' }}>
-              🎨 CraftAI Studio
+            🎨 KraftHouse
             </h1>
             <div style={{
               backgroundColor: '#e8f8f6',
@@ -128,7 +302,6 @@ const Home = () => {
             </div>
           </div>
 
-          {/* Right */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <span style={{ color: '#666', fontSize: '0.9rem' }}>
               👋 {userProfile?.displayName || 'Artisan'}
@@ -173,7 +346,7 @@ const Home = () => {
           </div>
         ) : posts.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem' }}>
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎨</div>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏠</div>
             <h3>No posts yet</h3>
             <p style={{ color: '#666', marginBottom: '2rem' }}>
               Be the first to share your amazing work with the community!
@@ -292,23 +465,188 @@ const Home = () => {
                     </div>
                   )}
 
-                  {/* Engagement Stats */}
+                  {/* Engagement Section */}
                   <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     paddingTop: '1rem',
-                    borderTop: '1px solid #f0f0f0'
+                    borderTop: '1px solid #f0f0f0',
+                    marginBottom: showComments[post.id] ? '1rem' : '0'
                   }}>
                     <div style={{ display: 'flex', gap: '1.5rem' }}>
-                      <span style={{ fontSize: '0.9rem', color: '#666' }}>❤️ {post.likes || 0}</span>
-                      <span style={{ fontSize: '0.9rem', color: '#666' }}>💬 {post.comments || 0}</span>
-                      <span style={{ fontSize: '0.9rem', color: '#666' }}>📤 {post.shares || 0}</span>
+                      <button
+                        onClick={() => handleLike(post.id)}
+                        disabled={likingPosts.has(post.id)}
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          cursor: likingPosts.has(post.id) ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          fontSize: '0.9rem',
+                          color: post.likedBy?.includes(currentUser?.uid) ? '#ff6b6b' : '#666',
+                          fontWeight: post.likedBy?.includes(currentUser?.uid) ? 'bold' : 'normal',
+                          opacity: likingPosts.has(post.id) ? 0.6 : 1
+                        }}
+                      >
+                        ❤️ {post.likes || 0}
+                      </button>
+                      
+                      <button
+                        onClick={() => toggleComments(post.id)}
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          fontSize: '0.9rem',
+                          color: showComments[post.id] ? '#4ecdc4' : '#666',
+                          fontWeight: showComments[post.id] ? 'bold' : 'normal'
+                        }}
+                      >
+                        💬 {post.comments || 0}
+                      </button>
+                      
+                      <button
+                        onClick={() => handleShare(post.id, post.title)}
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          fontSize: '0.9rem',
+                          color: '#666'
+                        }}
+                      >
+                        📤 {post.shares || 0}
+                      </button>
                     </div>
-                    <span style={{ fontSize: '0.85rem', color: '#999' }}>
-                      👀 {post.views || 0} views
-                    </span>
                   </div>
+
+                  {/* Comments Section */}
+                  {showComments[post.id] && (
+                    <div style={{ 
+                      paddingTop: '1rem', 
+                      borderTop: '1px solid #f0f0f0',
+                      marginTop: '1rem'
+                    }}>
+                      {/* Comment Input */}
+                      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+                        <InitialsAvatar
+                          name={userProfile?.displayName || currentUser?.displayName || 'You'}
+                          imageUrl={userProfile?.profileImage || currentUser?.photoURL}
+                          size={32}
+                          fontSize={14}
+                        />
+                        <div style={{ flex: 1, display: 'flex', gap: '0.5rem' }}>
+                          <input
+                            type="text"
+                            value={commentTexts[post.id] || ''}
+                            onChange={(e) => setCommentTexts(prev => ({ 
+                              ...prev, 
+                              [post.id]: e.target.value 
+                            }))}
+                            placeholder="Add a comment..."
+                            style={{
+                              flex: 1,
+                              padding: '0.5rem 1rem',
+                              border: '1px solid #e0e0e0',
+                              borderRadius: '20px',
+                              fontSize: '0.9rem',
+                              outline: 'none'
+                            }}
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                handleComment(post.id);
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={() => handleComment(post.id)}
+                            disabled={!commentTexts[post.id]?.trim()}
+                            style={{
+                              backgroundColor: commentTexts[post.id]?.trim() ? '#4ecdc4' : '#ccc',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '50%',
+                              width: '35px',
+                              height: '35px',
+                              cursor: commentTexts[post.id]?.trim() ? 'pointer' : 'not-allowed',
+                              fontSize: '16px'
+                            }}
+                          >
+                            🚀
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Comments List */}
+                      <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                        {comments[post.id] && comments[post.id].length > 0 ? (
+                          comments[post.id].map((comment) => (
+                            <div 
+                              key={comment.id} 
+                              style={{ 
+                                display: 'flex', 
+                                gap: '0.75rem', 
+                                marginBottom: '1rem',
+                                padding: '0.5rem 0'
+                              }}
+                            >
+                              <InitialsAvatar
+                                name={comment.authorName || 'Anonymous'}
+                                imageUrl={comment.authorAvatar}
+                                size={32}
+                                fontSize={14}
+                              />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ 
+                                  backgroundColor: '#f8f9fa', 
+                                  padding: '0.75rem 1rem', 
+                                  borderRadius: '18px',
+                                  marginBottom: '0.25rem'
+                                }}>
+                                  <div style={{ 
+                                    fontWeight: 'bold', 
+                                    fontSize: '0.85rem', 
+                                    marginBottom: '0.25rem',
+                                    color: '#333'
+                                  }}>
+                                    {comment.authorName || 'Anonymous'}
+                                  </div>
+                                  <div style={{ fontSize: '0.9rem', color: '#333' }}>
+                                    {comment.content}
+                                  </div>
+                                </div>
+                                <div style={{ 
+                                  fontSize: '0.75rem', 
+                                  color: '#999', 
+                                  paddingLeft: '1rem' 
+                                }}>
+                                  {formatTimeAgo(comment.createdAt)}
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ 
+                            textAlign: 'center', 
+                            color: '#666', 
+                            fontSize: '0.9rem',
+                            padding: '1rem'
+                          }}>
+                            No comments yet. Be the first to comment!
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </article>
             ))}

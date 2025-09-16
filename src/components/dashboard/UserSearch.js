@@ -1,646 +1,611 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import InitialsAvatar from '../common/InitialsAvatar';
 
-// InitialsAvatar component (inline for simplicity)
-const InitialsAvatar = ({ 
-  name, 
-  size = 40, 
-  fontSize = 16,
-  imageUrl = null,
-  style = {}
-}) => {
-  const getInitials = (name) => {
-    if (!name) return 'U';
-    const parts = name.trim().split(' ').filter(part => part.length > 0);
-    if (parts.length === 1) {
-      return parts[0][0].toUpperCase();
-    } else if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+const UserSearch = ({ currentUser, onSearch, onFollow, onUnfollow, onLike, onComment, onShare }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userPosts, setUserPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [followingStatus, setFollowingStatus] = useState({});
+  const [showComments, setShowComments] = useState({});
+  const [commentText, setCommentText] = useState({});
+
+  const { getUserPosts, checkIfFollowing } = useAuth();
+
+  const handleSearch = async () => {
+    if (!searchTerm.trim()) return;
+    
+    setLoading(true);
+    try {
+      const results = await onSearch(searchTerm);
+      setSearchResults(results);
+      
+      // Check following status for each user
+      const statusPromises = results.map(async (user) => {
+        const isFollowing = await checkIfFollowing(user.id);
+        return { userId: user.id, isFollowing };
+      });
+      
+      const statuses = await Promise.all(statusPromises);
+      const statusMap = {};
+      statuses.forEach(({ userId, isFollowing }) => {
+        statusMap[userId] = isFollowing;
+      });
+      setFollowingStatus(statusMap);
+      
+    } catch (error) {
+      console.error('Error searching users:', error);
     }
-    return 'U';
+    setLoading(false);
   };
 
-  const getAvatarColor = (name) => {
-    if (!name) return '#4ecdc4';
-    const colors = [
-      '#4ecdc4', '#45b7d1', '#96c93d', '#f5a623',
-      '#e85d75', '#7b68ee', '#ff6b6b', '#26de81',
-      '#fd79a8', '#fdcb6e', '#6c5ce7', '#a29bfe'
-    ];
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  const handleViewProfile = async (user) => {
+    setSelectedUser(user);
+    setPostsLoading(true);
+    
+    try {
+      const posts = await getUserPosts(user.id);
+      setUserPosts(posts);
+    } catch (error) {
+      console.error('Error loading user posts:', error);
+      setUserPosts([]);
     }
-    const index = Math.abs(hash) % colors.length;
-    return colors[index];
+    setPostsLoading(false);
   };
 
-  const initials = getInitials(name);
-  const backgroundColor = getAvatarColor(name);
+  const handleFollow = async (userId) => {
+    try {
+      const result = await onFollow(userId);
+      if (result.success) {
+        setFollowingStatus(prev => ({ ...prev, [userId]: true }));
+      }
+    } catch (error) {
+      console.error('Error following user:', error);
+    }
+  };
 
-  if (imageUrl) {
+  const handleUnfollow = async (userId) => {
+    try {
+      const result = await onUnfollow(userId);
+      if (result.success) {
+        setFollowingStatus(prev => ({ ...prev, [userId]: false }));
+      }
+    } catch (error) {
+      console.error('Error unfollowing user:', error);
+    }
+  };
+
+  const handleLike = async (postId) => {
+    try {
+      await onLike(postId);
+      // Refresh posts to show updated likes
+      if (selectedUser) {
+        const updatedPosts = await getUserPosts(selectedUser.id);
+        setUserPosts(updatedPosts);
+      }
+    } catch (error) {
+      console.error('Error liking post:', error);
+    }
+  };
+
+  const handleComment = async (postId) => {
+    const comment = commentText[postId];
+    if (!comment?.trim()) return;
+    
+    try {
+      await onComment(postId, comment);
+      setCommentText(prev => ({ ...prev, [postId]: '' }));
+      // Refresh posts to show new comment
+      if (selectedUser) {
+        const updatedPosts = await getUserPosts(selectedUser.id);
+        setUserPosts(updatedPosts);
+      }
+    } catch (error) {
+      console.error('Error commenting on post:', error);
+    }
+  };
+
+  const toggleComments = (postId) => {
+    setShowComments(prev => ({ ...prev, [postId]: !prev[postId] }));
+  };
+
+  const formatTimeAgo = (date) => {
+    if (!date) return 'Just now';
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
+    return `${Math.floor(diffInSeconds / 86400)}d`;
+  };
+
+  if (selectedUser) {
     return (
-      <div
-        style={{
-          width: size,
-          height: size,
-          borderRadius: '50%',
-          overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          border: '2px solid #e9ecef',
-          ...style
-        }}
-      >
-        <img
-          src={imageUrl}
-          alt={name || 'User'}
+      <div style={{ padding: '2rem' }}>
+        {/* Back Button */}
+        <button
+          onClick={() => setSelectedUser(null)}
           style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover'
-          }}
-          onError={(e) => {
-            e.target.style.display = 'none';
-            e.target.nextSibling.style.display = 'flex';
-          }}
-        />
-        <div
-          style={{
-            display: 'none',
-            width: '100%',
-            height: '100%',
-            backgroundColor,
+            backgroundColor: '#4ecdc4',
             color: 'white',
-            fontSize: fontSize,
+            border: 'none',
+            padding: '0.75rem 1.5rem',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontSize: '1rem',
             fontWeight: 'bold',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textTransform: 'uppercase'
+            marginBottom: '2rem'
           }}
         >
-          {initials}
+          ← Back to Search
+        </button>
+
+        {/* User Profile Header */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '2rem',
+          padding: '2rem',
+          backgroundColor: '#f8f9fa',
+          borderRadius: '12px',
+          marginBottom: '2rem'
+        }}>
+          <InitialsAvatar
+            name={selectedUser.displayName}
+            imageUrl={selectedUser.profileImage}
+            size={80}
+            fontSize={32}
+          />
+          <div style={{ flex: 1 }}>
+            <h2 style={{ margin: '0 0 0.5rem 0', fontSize: '2rem' }}>
+              {selectedUser.displayName}
+            </h2>
+            <p style={{ margin: '0 0 0.5rem 0', color: '#666', fontSize: '1.1rem' }}>
+              @{selectedUser.username}
+            </p>
+            <p style={{ margin: '0 0 1rem 0', color: '#666' }}>
+              🎨 {selectedUser.craftType} • 📍 {selectedUser.location || 'Unknown'}
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.9rem', color: '#666' }}>
+              <span>👥 {selectedUser.followers || 0} followers</span>
+              <span>📷 {selectedUser.postsCount || 0} posts</span>
+            </div>
+          </div>
+          {selectedUser.id !== currentUser?.uid && (
+            <button
+              onClick={() => followingStatus[selectedUser.id] ? handleUnfollow(selectedUser.id) : handleFollow(selectedUser.id)}
+              style={{
+                backgroundColor: followingStatus[selectedUser.id] ? '#ff6b6b' : '#4ecdc4',
+                color: 'white',
+                border: 'none',
+                padding: '0.75rem 1.5rem',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                fontWeight: 'bold'
+              }}
+            >
+              {followingStatus[selectedUser.id] ? 'Unfollow' : 'Follow'}
+            </button>
+          )}
+        </div>
+
+        {/* User Posts */}
+        <div>
+          <h3 style={{ marginBottom: '1.5rem', fontSize: '1.5rem' }}>
+            📷 {selectedUser.displayName}'s Posts
+          </h3>
+          
+          {postsLoading ? (
+            <div style={{ textAlign: 'center', padding: '3rem' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔄</div>
+              <p>Loading posts...</p>
+            </div>
+          ) : userPosts.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '3rem', backgroundColor: '#f8f9fa', borderRadius: '12px' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📷</div>
+              <p style={{ color: '#666', fontSize: '1.1rem' }}>
+                {selectedUser.displayName} hasn't shared any posts yet.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '2rem' }}>
+              {userPosts.map((post) => (
+                <div
+                  key={post.id}
+                  style={{
+                    backgroundColor: 'white',
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                    transition: 'transform 0.2s ease'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                  onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                >
+                  {/* Post Image */}
+                  {post.imageUrl && (
+                    <img
+                      src={post.imageUrl}
+                      alt={post.title}
+                      style={{
+                        width: '100%',
+                        height: '200px',
+                        objectFit: 'cover'
+                      }}
+                    />
+                  )}
+
+                  {/* Post Content */}
+                  <div style={{ padding: '1.5rem' }}>
+                    <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '1.2rem' }}>
+                      {post.title}
+                    </h4>
+                    
+                    {post.description && (
+                      <p style={{ 
+                        margin: '0 0 1rem 0', 
+                        color: '#666', 
+                        fontSize: '0.9rem',
+                        lineHeight: '1.4'
+                      }}>
+                        {post.description.length > 100 
+                          ? `${post.description.substring(0, 100)}...`
+                          : post.description
+                        }
+                      </p>
+                    )}
+
+                    {/* Tags */}
+                    {post.tags && post.tags.length > 0 && (
+                      <div style={{ 
+                        display: 'flex', 
+                        flexWrap: 'wrap', 
+                        gap: '0.5rem',
+                        marginBottom: '1rem'
+                      }}>
+                        {post.tags.slice(0, 3).map((tag) => (
+                          <span
+                            key={tag}
+                            style={{
+                              backgroundColor: '#e8f8f6',
+                              color: '#4ecdc4',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '10px',
+                              fontSize: '0.75rem',
+                              fontWeight: 'bold'
+                            }}
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Post Meta */}
+                    <div style={{ 
+                      fontSize: '0.8rem', 
+                      color: '#999', 
+                      marginBottom: '1rem' 
+                    }}>
+                      {formatTimeAgo(post.createdAt)}
+                    </div>
+
+                    {/* Post Actions */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      paddingTop: '1rem',
+                      borderTop: '1px solid #f0f0f0'
+                    }}>
+                      <div style={{ display: 'flex', gap: '1rem' }}>
+                        <button
+                          onClick={() => handleLike(post.id)}
+                          style={{
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            fontSize: '0.9rem',
+                            color: post.likedBy?.includes(currentUser?.uid) ? '#ff6b6b' : '#666'
+                          }}
+                        >
+                          ❤️ {post.likes || 0}
+                        </button>
+                        <button
+                          onClick={() => toggleComments(post.id)}
+                          style={{
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            fontSize: '0.9rem',
+                            color: '#666'
+                          }}
+                        >
+                          💬 {post.comments || 0}
+                        </button>
+                        <button
+                          onClick={() => onShare(post.id)}
+                          style={{
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            fontSize: '0.9rem',
+                            color: '#666'
+                          }}
+                        >
+                          📤 {post.shares || 0}
+                        </button>
+                      </div>
+                      <span style={{ fontSize: '0.8rem', color: '#999' }}>
+                        👀 {post.views || 0}
+                      </span>
+                    </div>
+
+                    {/* Comment Section */}
+                    {showComments[post.id] && (
+                      <div style={{ 
+                        marginTop: '1rem', 
+                        paddingTop: '1rem', 
+                        borderTop: '1px solid #f0f0f0' 
+                      }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                          <input
+                            type="text"
+                            value={commentText[post.id] || ''}
+                            onChange={(e) => setCommentText(prev => ({ 
+                              ...prev, 
+                              [post.id]: e.target.value 
+                            }))}
+                            placeholder="Add a comment..."
+                            style={{
+                              flex: 1,
+                              padding: '0.5rem',
+                              border: '1px solid #e0e0e0',
+                              borderRadius: '20px',
+                              fontSize: '0.9rem',
+                              outline: 'none'
+                            }}
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                handleComment(post.id);
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={() => handleComment(post.id)}
+                            style={{
+                              backgroundColor: '#4ecdc4',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '50%',
+                              width: '35px',
+                              height: '35px',
+                              cursor: 'pointer',
+                              fontSize: '16px'
+                            }}
+                          >
+                            🚀
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        backgroundColor,
-        color: 'white',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: fontSize,
-        fontWeight: 'bold',
-        textTransform: 'uppercase',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        border: '2px solid rgba(255,255,255,0.2)',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        ...style
-      }}
-    >
-      {initials}
-    </div>
-  );
-};
-
-const UserSearch = ({ currentUser }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [searchCategory, setSearchCategory] = useState('all');
-  const [filteredUsers, setFilteredUsers] = useState([]);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [showUserProfile, setShowUserProfile] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [followingStatus, setFollowingStatus] = useState({});
-  const [followLoading, setFollowLoading] = useState({});
-
-  const { searchUsers, followUser, unfollowUser, isFollowing } = useAuth();
-
-  // Real-time search with debouncing
-  useEffect(() => {
-    const delayedSearch = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const users = await searchUsers(searchTerm, searchCategory);
-        const filteredResults = users.filter(user => user.id !== currentUser?.uid);
-        setFilteredUsers(filteredResults);
-        
-        // Check follow status for each user
-        const statusPromises = filteredResults.map(async (user) => {
-          const following = await isFollowing(user.id);
-          return { [user.id]: following };
-        });
-        
-        const statuses = await Promise.all(statusPromises);
-        const statusMap = statuses.reduce((acc, status) => ({ ...acc, ...status }), {});
-        setFollowingStatus(statusMap);
-      } catch (error) {
-        console.error('Search error:', error);
-        setFilteredUsers([]);
-      }
-      setLoading(false);
-    }, 500);
-
-    return () => clearTimeout(delayedSearch);
-  }, [searchTerm, searchCategory, currentUser, searchUsers, isFollowing]);
-
-  const handleUserClick = (user) => {
-    setSelectedUser(user);
-    setShowUserProfile(true);
-  };
-
-  const handleFollow = async (userId) => {
-    setFollowLoading(prev => ({ ...prev, [userId]: true }));
-    
-    try {
-      const isCurrentlyFollowing = followingStatus[userId];
-      
-      if (isCurrentlyFollowing) {
-        const result = await unfollowUser(userId);
-        if (result.success) {
-          setFollowingStatus(prev => ({ ...prev, [userId]: false }));
-          setFilteredUsers(prev => 
-            prev.map(user => 
-              user.id === userId 
-                ? { ...user, followers: (user.followers || 0) - 1 }
-                : user
-            )
-          );
-        } else {
-          alert('❌ Error unfollowing user: ' + result.error);
-        }
-      } else {
-        const result = await followUser(userId);
-        if (result.success) {
-          setFollowingStatus(prev => ({ ...prev, [userId]: true }));
-          setFilteredUsers(prev => 
-            prev.map(user => 
-              user.id === userId 
-                ? { ...user, followers: (user.followers || 0) + 1 }
-                : user
-            )
-          );
-        } else {
-          alert('❌ Error following user: ' + result.error);
-        }
-      }
-    } catch (error) {
-      alert('❌ Error: ' + error.message);
-    }
-    
-    setFollowLoading(prev => ({ ...prev, [userId]: false }));
-  };
-
-  const handleMessage = (userId) => {
-    alert('💬 Messaging functionality will be implemented in the next update!');
-  };
-
-  return (
     <div style={{ padding: '2rem' }}>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '2rem'
-      }}>
-        <h2 style={{ margin: 0, color: '#333', fontSize: '1.8rem' }}>
-          🔍 Find Fellow Artisans
-        </h2>
-        <div style={{
-          backgroundColor: loading ? '#f8f9fa' : '#e8f8f6',
-          color: loading ? '#666' : '#4ecdc4',
-          padding: '0.5rem 1rem',
-          borderRadius: '20px',
-          fontSize: '0.9rem',
-          fontWeight: 'bold'
-        }}>
-          {loading ? 'Searching...' : `${filteredUsers.length} artisans found`}
-        </div>
-      </div>
+      <div style={{ marginBottom: '2rem' }}>
+        <h2 style={{ marginBottom: '1rem', fontSize: '2rem' }}>🔍 Find Artisans</h2>
+        <p style={{ color: '#666', marginBottom: '2rem' }}>
+          Discover talented artisans, follow their work, and get inspired by their creations.
+        </p>
 
-      {/* Search Controls */}
-      <div style={{
-        display: 'flex',
-        gap: '1rem',
-        marginBottom: '2rem',
-        flexWrap: 'wrap'
-      }}>
-        <div style={{ flex: 1, minWidth: '300px' }}>
+        {/* Search Bar */}
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
           <input
             type="text"
-            placeholder="Search by name, craft, location, or skills..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search by name, username, or craft type..."
             style={{
-              width: '100%',
-              padding: '0.75rem',
+              flex: 1,
+              padding: '1rem',
               border: '2px solid #e9ecef',
               borderRadius: '8px',
               fontSize: '1rem',
               outline: 'none'
             }}
-            onFocus={(e) => e.target.style.borderColor = '#4ecdc4'}
-            onBlur={(e) => e.target.style.borderColor = '#e9ecef'}
+            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
           />
+          <button
+            onClick={handleSearch}
+            disabled={loading}
+            style={{
+              backgroundColor: loading ? '#ccc' : '#4ecdc4',
+              color: 'white',
+              border: 'none',
+              padding: '1rem 2rem',
+              borderRadius: '8px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontSize: '1rem',
+              fontWeight: 'bold'
+            }}
+          >
+            {loading ? '⏳' : '🔍'} Search
+          </button>
         </div>
-        
-        <select
-          value={searchCategory}
-          onChange={(e) => setSearchCategory(e.target.value)}
-          style={{
-            padding: '0.75rem',
-            border: '2px solid #e9ecef',
-            borderRadius: '8px',
-            fontSize: '1rem',
-            minWidth: '150px'
-          }}
-        >
-          <option value="all">All Crafts</option>
-          <option value="Pottery">Pottery</option>
-          <option value="Woodworking">Woodworking</option>
-          <option value="Jewelry Making">Jewelry</option>
-          <option value="Textile Arts">Textiles</option>
-          <option value="Metalwork">Metalwork</option>
-          <option value="Painting">Painting</option>
-          <option value="Sculpture">Sculpture</option>
-        </select>
-
-        <button
-          onClick={() => {
-            setSearchTerm('');
-            setSearchCategory('all');
-          }}
-          style={{
-            backgroundColor: '#6c757d',
-            color: 'white',
-            border: 'none',
-            padding: '0.75rem 1rem',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '0.9rem'
-          }}
-        >
-          Clear
-        </button>
       </div>
 
       {/* Search Results */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: '#666' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
-          <p>Searching for artisans...</p>
-        </div>
-      ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-          gap: '1.5rem'
-        }}>
-          {filteredUsers.map(user => {
-            const isUserFollowing = followingStatus[user.id];
-            const isFollowLoading = followLoading[user.id];
-            
-            return (
+      {searchResults.length > 0 && (
+        <div>
+          <h3 style={{ marginBottom: '1.5rem' }}>
+            Search Results ({searchResults.length})
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+            {searchResults.map((user) => (
               <div
                 key={user.id}
                 style={{
-                  backgroundColor: '#ffffff',
+                  backgroundColor: 'white',
+                  padding: '2rem',
                   borderRadius: '12px',
-                  padding: '1.5rem',
-                  boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-                  border: '1px solid #e9ecef',
-                  transition: 'all 0.3s ease',
-                  cursor: 'pointer'
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                  transition: 'transform 0.2s ease'
                 }}
-                onClick={() => handleUserClick(user)}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.15)';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.08)';
-                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
               >
-                {/* User Header */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  marginBottom: '1rem'
-                }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
                   <InitialsAvatar
-                    name={user.displayName || 'Anonymous Artisan'}
+                    name={user.displayName}
                     imageUrl={user.profileImage}
                     size={60}
-                    fontSize={20}
-                    style={{ marginRight: '1rem' }}
+                    fontSize={24}
                   />
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>
-                        {user.displayName || 'Anonymous Artisan'}
-                      </h3>
-                      {user.verified && (
-                        <span style={{ color: '#4ecdc4', fontSize: '1.2rem' }} title="Verified Artist">
-                          ✓
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '0.25rem' }}>
+                    <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '1.2rem' }}>
+                      {user.displayName}
+                    </h4>
+                    <p style={{ margin: '0', color: '#666', fontSize: '0.9rem' }}>
                       @{user.username}
-                    </div>
-                    <div style={{
-                      backgroundColor: '#e8f8f6',
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <p style={{ margin: '0 0 0.5rem 0', color: '#666' }}>
+                    🎨 {user.craftType} • 📍 {user.location || 'Unknown'}
+                  </p>
+                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: '#999' }}>
+                    <span>👥 {user.followers || 0} followers</span>
+                    <span>📷 {user.postsCount || 0} posts</span>
+                  </div>
+                </div>
+
+                {user.bio && (
+                  <p style={{ 
+                    margin: '0 0 1rem 0', 
+                    color: '#666', 
+                    fontSize: '0.9rem',
+                    lineHeight: '1.4'
+                  }}>
+                    {user.bio.length > 80 
+                      ? `${user.bio.substring(0, 80)}...`
+                      : user.bio
+                    }
+                  </p>
+                )}
+
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    onClick={() => handleViewProfile(user)}
+                    style={{
+                      backgroundColor: 'transparent',
                       color: '#4ecdc4',
-                      padding: '0.2rem 0.5rem',
-                      borderRadius: '10px',
-                      fontSize: '0.8rem',
+                      border: '2px solid #4ecdc4',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
                       fontWeight: 'bold',
-                      display: 'inline-block'
-                    }}>
-                      🎨 {user.craftType || 'Artisan'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* User Info */}
-                <p style={{ 
-                  color: '#666', 
-                  fontSize: '0.9rem', 
-                  lineHeight: '1.4',
-                  margin: '0 0 1rem 0',
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden'
-                }}>
-                  {user.bio || 'No bio available'}
-                </p>
-
-                {/* Location & Experience */}
-                <div style={{
-                  display: 'flex',
-                  gap: '1rem',
-                  fontSize: '0.8rem',
-                  color: '#666',
-                  marginBottom: '1rem',
-                  flexWrap: 'wrap'
-                }}>
-                  {user.location && <span>📍 {user.location}</span>}
-                  {user.experience && <span>⏰ {user.experience}</span>}
-                  <span>👥 {user.followers || 0} followers</span>
-                </div>
-
-                {/* Skills */}
-                <div style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '0.25rem',
-                  marginBottom: '1rem'
-                }}>
-                  {user.skills?.slice(0, 3).map(skill => (
-                    <span
-                      key={skill}
-                      style={{
-                        backgroundColor: '#f8f9fa',
-                        color: '#666',
-                        padding: '0.2rem 0.5rem',
-                        borderRadius: '8px',
-                        fontSize: '0.8rem'
-                      }}
-                    >
-                      {skill}
-                    </span>
-                  ))}
-                  {user.skills?.length > 3 && (
-                    <span style={{
-                      color: '#666',
-                      fontSize: '0.8rem',
-                      padding: '0.2rem 0.5rem'
-                    }}>
-                      +{user.skills.length - 3} more
-                    </span>
-                  )}
-                </div>
-
-                {/* Stats & Actions */}
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  paddingTop: '1rem',
-                  borderTop: '1px solid #e9ecef'
-                }}>
-                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: '#666' }}>
-                    <span>{user.postsCount || 0} posts</span>
-                    <span>Joined {new Date(user.createdAt?.toDate?.()).getFullYear() || '2025'}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      flex: 1
+                    }}
+                  >
+                    View Profile
+                  </button>
+                  
+                  {user.id !== currentUser?.uid && (
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFollow(user.id);
-                      }}
-                      disabled={isFollowLoading}
+                      onClick={() => followingStatus[user.id] ? handleUnfollow(user.id) : handleFollow(user.id)}
                       style={{
-                        backgroundColor: isUserFollowing ? '#6c757d' : '#4ecdc4',
+                        backgroundColor: followingStatus[user.id] ? '#ff6b6b' : '#4ecdc4',
                         color: 'white',
                         border: 'none',
-                        padding: '0.4rem 0.8rem',
-                        borderRadius: '4px',
-                        cursor: isFollowLoading ? 'not-allowed' : 'pointer',
-                        fontSize: '0.8rem',
-                        fontWeight: 'bold',
-                        opacity: isFollowLoading ? 0.7 : 1
-                      }}
-                    >
-                      {isFollowLoading ? (
-                        '⏳'
-                      ) : isUserFollowing ? (
-                        '✓ Following'
-                      ) : (
-                        '+ Follow'
-                      )}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMessage(user.id);
-                      }}
-                      style={{
-                        backgroundColor: 'transparent',
-                        color: '#4ecdc4',
-                        border: '1px solid #4ecdc4',
-                        padding: '0.4rem 0.8rem',
-                        borderRadius: '4px',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '6px',
                         cursor: 'pointer',
-                        fontSize: '0.8rem'
+                        fontSize: '0.9rem',
+                        fontWeight: 'bold'
                       }}
                     >
-                      💬
+                      {followingStatus[user.id] ? 'Unfollow' : 'Follow'}
                     </button>
-                  </div>
+                  )}
                 </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       )}
 
       {/* No Results */}
-      {!loading && filteredUsers.length === 0 && (
-        <div style={{
-          textAlign: 'center',
-          padding: '3rem',
-          color: '#666'
-        }}>
+      {searchTerm && !loading && searchResults.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '3rem' }}>
           <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔍</div>
-          <h3 style={{ margin: '0 0 0.5rem 0' }}>No artisans found</h3>
-          <p style={{ margin: 0 }}>
-            {searchTerm ? 
-              `No results for "${searchTerm}". Try different keywords or browse all artisans.` :
-              'Start typing to search for artisans by name, craft type, or skills.'
-            }
+          <h3>No artisans found</h3>
+          <p style={{ color: '#666' }}>
+            Try searching with different keywords or browse by craft type.
           </p>
         </div>
       )}
 
-      {/* User Profile Modal */}
-      {showUserProfile && selectedUser && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            padding: '2rem',
-            maxWidth: '500px',
-            width: '90%',
-            maxHeight: '80vh',
-            overflow: 'auto'
-          }}>
-            <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-              <InitialsAvatar
-                name={selectedUser.displayName || 'Anonymous Artisan'}
-                imageUrl={selectedUser.profileImage}
-                size={100}
-                fontSize={32}
-                style={{ marginBottom: '1rem' }}
-              />
-              <h2 style={{ margin: '0 0 0.5rem 0' }}>
-                {selectedUser.displayName || 'Anonymous Artisan'}
-              </h2>
-              <p style={{ color: '#666', margin: '0 0 1rem 0' }}>
-                @{selectedUser.username}
-              </p>
-              <div style={{
-                backgroundColor: '#e8f8f6',
-                color: '#4ecdc4',
-                padding: '0.5rem 1rem',
-                borderRadius: '20px',
-                fontSize: '0.9rem',
-                fontWeight: 'bold',
-                display: 'inline-block'
-              }}>
-                🎨 {selectedUser.craftType || 'Artisan'}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '2rem' }}>
-              <p style={{ textAlign: 'center', color: '#666', lineHeight: '1.5' }}>
-                {selectedUser.bio || 'No bio available'}
-              </p>
-              {selectedUser.aboutMe && (
-                <div style={{ marginTop: '1rem' }}>
-                  <h4 style={{ color: '#4ecdc4', marginBottom: '0.5rem' }}>About</h4>
-                  <p style={{ color: '#666', lineHeight: '1.5', fontSize: '0.9rem' }}>
-                    {selectedUser.aboutMe}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {selectedUser.skills && selectedUser.skills.length > 0 && (
-              <div style={{ marginBottom: '2rem' }}>
-                <h4 style={{ color: '#4ecdc4', marginBottom: '1rem' }}>Skills</h4>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  {selectedUser.skills.map(skill => (
-                    <span
-                      key={skill}
-                      style={{
-                        backgroundColor: '#4ecdc4',
-                        color: 'white',
-                        padding: '0.3rem 0.75rem',
-                        borderRadius: '15px',
-                        fontSize: '0.8rem',
-                        fontWeight: 'bold'
-                      }}
-                    >
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+      {/* Popular Craft Types */}
+      {!searchTerm && (
+        <div style={{ marginTop: '3rem' }}>
+          <h3 style={{ marginBottom: '1.5rem' }}>🔥 Popular Craft Types</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+            {['Pottery', 'Jewelry', 'Woodworking', 'Textiles', 'Painting', 'Sculpture', 'Ceramics', 'Leatherwork'].map(craft => (
               <button
+                key={craft}
                 onClick={() => {
-                  handleFollow(selectedUser.id);
-                  setShowUserProfile(false);
+                  setSearchTerm(craft);
+                  handleSearch();
                 }}
-                disabled={followLoading[selectedUser.id]}
                 style={{
-                  flex: 1,
-                  backgroundColor: followingStatus[selectedUser.id] ? '#6c757d' : '#4ecdc4',
-                  color: 'white',
+                  backgroundColor: '#e8f8f6',
+                  color: '#4ecdc4',
                   border: 'none',
-                  padding: '0.75rem',
-                  borderRadius: '6px',
-                  cursor: followLoading[selectedUser.id] ? 'not-allowed' : 'pointer',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '25px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
                   fontWeight: 'bold',
-                  opacity: followLoading[selectedUser.id] ? 0.7 : 1
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.backgroundColor = '#4ecdc4';
+                  e.target.style.color = 'white';
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.backgroundColor = '#e8f8f6';
+                  e.target.style.color = '#4ecdc4';
                 }}
               >
-                {followLoading[selectedUser.id] ? (
-                  '⏳ Processing...'
-                ) : followingStatus[selectedUser.id] ? (
-                  '✓ Following'
-                ) : (
-                  '+ Follow'
-                )}
+                {craft}
               </button>
-              <button
-                onClick={() => setShowUserProfile(false)}
-                style={{
-                  flex: 1,
-                  backgroundColor: '#6c757d',
-                  color: 'white',
-                  border: 'none',
-                  padding: '0.75rem',
-                  borderRadius: '6px',
-                  cursor: 'pointer'
-                }}
-              >
-                Close
-              </button>
-            </div>
+            ))}
           </div>
         </div>
       )}

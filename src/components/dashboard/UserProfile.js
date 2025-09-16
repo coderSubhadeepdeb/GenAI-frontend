@@ -1,893 +1,898 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { collection, query, where, orderBy, onSnapshot, limit , deleteDoc, doc} from 'firebase/firestore';
-import { db } from '../../config/firebase';
+import React, { useState, useRef } from 'react';
 import InitialsAvatar from '../common/InitialsAvatar';
 
 const UserProfile = ({ profileData, currentUser, onProfileUpdate, onImageUpload }) => {
-  const [editMode, setEditMode] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [editingUsername, setEditingUsername] = useState(false);
-  const [newUsername, setNewUsername] = useState(profileData?.username || '');
-  const [message, setMessage] = useState('');
-  const [userPosts, setUserPosts] = useState([]);
-  const [postsLoading, setPostsLoading] = useState(true);
-  const [postsError, setPostsError] = useState('');
-  
-  const { updateUsername, uploadImage } = useAuth();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({});
+  const [uploading, setUploading] = useState({ profile: false, cover: false });
+  const [newSkill, setNewSkill] = useState('');
+  const [errors, setErrors] = useState({});
+  const profileImageRef = useRef(null);
+  const coverImageRef = useRef(null);
 
-  // Add this function before the return statement in UserProfile.js
-const handleDeletePost = async (postId, postTitle) => {
-  const confirmMessage = `Are you sure you want to delete "${postTitle}"?\n\nThis action cannot be undone.`;
-  
-  if (!window.confirm(confirmMessage)) {
-    return;
-  }
+  // Initialize edit data when editing starts
+  const startEditing = () => {
+    setEditData({
+      displayName: profileData?.displayName || '',
+      username: profileData?.username || '',
+      bio: profileData?.bio || '',
+      location: profileData?.location || '',
+      experience: profileData?.experience || 'Beginner',
+      craftType: profileData?.craftType || 'General',
+      skills: profileData?.skills || [],
+      phone: profileData?.phone || '',
+      website: profileData?.website || ''
+    });
+    setIsEditing(true);
+    setErrors({});
+  };
 
-  try {
-    console.log('🗑️ Deleting post:', postId);
-    
-    // Delete from Firestore
-    await deleteDoc(doc(db, 'posts', postId));
-    
-    // Update local state immediately for better UX
-    setUserPosts(prevPosts => prevPosts.filter(post => post.id !== postId));
-    
-    console.log('✅ Post deleted successfully');
-    setMessage('✅ Post deleted successfully!');
-    setTimeout(() => setMessage(''), 3000);
-    
-  } catch (error) {
-    console.error('❌ Error deleting post:', error);
-    setMessage('❌ Error deleting post: ' + error.message);
-  }
-};
+  const cancelEditing = () => {
+    setIsEditing(false);
+    setEditData({});
+    setErrors({});
+    setNewSkill('');
+  };
 
-
-  const [tempData, setTempData] = useState({
-    displayName: profileData?.displayName || '',
-    bio: profileData?.bio || '',
-    aboutMe: profileData?.aboutMe || '',
-    location: profileData?.location || '',
-    craftType: profileData?.craftType || '',
-    experience: profileData?.experience || '',
-    skills: profileData?.skills || [],
-    contact: {
-      phone: profileData?.contact?.phone || '',
-      website: profileData?.contact?.website || '',
-      social: {
-        instagram: profileData?.contact?.social?.instagram || '',
-        facebook: profileData?.contact?.social?.facebook || '',
-        twitter: profileData?.contact?.social?.twitter || ''
-      }
+  // Handle input changes
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setEditData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    
+    // Clear error for this field
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
     }
-  });
+  };
 
-  const skillsList = [
-    'Pottery', 'Jewelry Making', 'Textile Arts', 'Woodworking', 'Metalwork',
-    'Painting', 'Sculpture', 'Glasswork', 'Leather Craft', 'Ceramics',
-    'Embroidery', 'Weaving', 'Carving', 'Beadwork', 'Calligraphy'
-  ];
+  // Handle skills management
+  const addSkill = () => {
+    if (newSkill.trim() && !editData.skills.includes(newSkill.trim())) {
+      setEditData(prev => ({
+        ...prev,
+        skills: [...prev.skills, newSkill.trim()]
+      }));
+      setNewSkill('');
+    }
+  };
 
-  const experienceLevels = [
-    'Beginner', '1-2 years', '3-5 years', '6-10 years', '10+ years', 'Master Craftsperson'
-  ];
+  const removeSkill = (skillToRemove) => {
+    setEditData(prev => ({
+      ...prev,
+      skills: prev.skills.filter(skill => skill !== skillToRemove)
+    }));
+  };
 
-  // Fetch user posts in real-time
-  useEffect(() => {
-    if (!currentUser?.uid) {
-      setPostsLoading(false);
-      return;
+  const handleSkillKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addSkill();
+    }
+  };
+
+  // Validate form data
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!editData.displayName?.trim()) {
+      newErrors.displayName = 'Display name is required';
     }
 
-    console.log('📡 Setting up user posts listener for:', currentUser.uid);
-    
-    try {
-      const postsRef = collection(db, 'posts');
-      const q = query(
-        postsRef,
-        where('authorId', '==', currentUser.uid),
-        orderBy('createdAt', 'desc'),
-        limit(20)
-      );
-
-      const unsubscribe = onSnapshot(q, 
-        (snapshot) => {
-          console.log(`📬 Found ${snapshot.docs.length} posts for user`);
-          
-          const posts = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            createdAt: doc.data().createdAt?.toDate?.() || new Date()
-          }));
-
-          setUserPosts(posts);
-          setPostsLoading(false);
-          setPostsError('');
-          
-          console.log('✅ User posts loaded:', posts);
-        },
-        (error) => {
-          console.error('❌ Error loading user posts:', error);
-          
-          if (error.code === 'failed-precondition' && error.message.includes('index')) {
-            setPostsError('⏳ Index is still building. Your posts will appear shortly...');
-          } else {
-            setPostsError('Failed to load posts: ' + error.message);
-          }
-          
-          setPostsLoading(false);
-        }
-      );
-
-      return () => {
-        console.log('🔌 Cleaning up user posts listener');
-        unsubscribe();
-      };
-    } catch (error) {
-      console.error('❌ Error setting up posts listener:', error);
-      setPostsError('Failed to set up posts feed');
-      setPostsLoading(false);
+    if (!editData.username?.trim()) {
+      newErrors.username = 'Username is required';
+    } else if (editData.username.length < 3) {
+      newErrors.username = 'Username must be at least 3 characters';
+    } else if (!/^[a-zA-Z0-9_]+$/.test(editData.username)) {
+      newErrors.username = 'Username can only contain letters, numbers, and underscores';
     }
-  }, [currentUser?.uid]);
 
-  // Update temp data when profile data changes
-  useEffect(() => {
-    if (profileData) {
-      setTempData({
-        displayName: profileData.displayName || '',
-        bio: profileData.bio || '',
-        aboutMe: profileData.aboutMe || '',
-        location: profileData.location || '',
-        craftType: profileData.craftType || '',
-        experience: profileData.experience || '',
-        skills: profileData.skills || [],
-        contact: {
-          phone: profileData.contact?.phone || '',
-          website: profileData.contact?.website || '',
-          social: {
-            instagram: profileData.contact?.social?.instagram || '',
-            facebook: profileData.contact?.social?.facebook || '',
-            twitter: profileData.contact?.social?.twitter || ''
-          }
-        }
-      });
-      setNewUsername(profileData.username || '');
+    if (editData.website && !editData.website.startsWith('http')) {
+      newErrors.website = 'Website must start with http:// or https://';
     }
-  }, [profileData]);
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSave = async () => {
-    setSaving(true);
-    setMessage('');
-    
-    try {
-      const result = await onProfileUpdate(tempData);
-      if (result.success) {
-        setEditMode(false);
-        setMessage('✅ Profile saved successfully!');
-        setTimeout(() => setMessage(''), 3000);
-      } else {
-        setMessage('❌ Error: ' + result.error);
-      }
-    } catch (error) {
-      setMessage('❌ Error saving profile: ' + error.message);
-    }
-    
-    setSaving(false);
-  };
-
-  const handleCancel = () => {
-    setTempData({
-      displayName: profileData?.displayName || '',
-      bio: profileData?.bio || '',
-      aboutMe: profileData?.aboutMe || '',
-      location: profileData?.location || '',
-      craftType: profileData?.craftType || '',
-      experience: profileData?.experience || '',
-      skills: profileData?.skills || [],
-      contact: {
-        phone: profileData?.contact?.phone || '',
-        website: profileData?.contact?.website || '',
-        social: {
-          instagram: profileData?.contact?.social?.instagram || '',
-          facebook: profileData?.contact?.social?.facebook || '',
-          twitter: profileData?.contact?.social?.twitter || ''
-        }
-      }
-    });
-    setEditMode(false);
-    setMessage('');
-  };
-
-  const handleUsernameUpdate = async () => {
-    if (!newUsername.trim()) {
-      setMessage('❌ Username cannot be empty');
+    if (!validateForm()) {
       return;
     }
 
-    if (newUsername.length < 3) {
-      setMessage('❌ Username must be at least 3 characters');
-      return;
-    }
-
-    setSaving(true);
     try {
-      const result = await updateUsername(newUsername.trim());
+      const result = await onProfileUpdate(editData);
       if (result.success) {
-        setEditingUsername(false);
-        setMessage('✅ Username updated successfully!');
-        setTimeout(() => setMessage(''), 3000);
+        setIsEditing(false);
+        setEditData({});
+        setNewSkill('');
+        console.log('✅ Profile updated successfully');
       } else {
-        setMessage('❌ ' + result.error);
+        setErrors({ general: result.error || 'Failed to update profile' });
       }
     } catch (error) {
-      setMessage('❌ Error updating username: ' + error.message);
+      console.error('Error saving profile:', error);
+      setErrors({ general: 'An unexpected error occurred' });
     }
-    setSaving(false);
   };
 
-  const handleSkillToggle = (skill) => {
-    const currentSkills = tempData.skills || [];
-    const updatedSkills = currentSkills.includes(skill)
-      ? currentSkills.filter(s => s !== skill)
-      : [...currentSkills, skill];
-    
-    setTempData({...tempData, skills: updatedSkills});
+  const handleImageUpload = async (file, type) => {
+    setUploading(prev => ({ ...prev, [type]: true }));
+    try {
+      const result = await onImageUpload(file, type);
+      if (result.success) {
+        console.log(`✅ ${type} image uploaded successfully`);
+      } else {
+        console.error(`❌ ${type} image upload failed:`, result.error);
+      }
+    } catch (error) {
+      console.error(`Error uploading ${type} image:`, error);
+    }
+    setUploading(prev => ({ ...prev, [type]: false }));
   };
 
-  const handleImageUpload = async (type) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      if (file.size > 10 * 1024 * 1024) {
-        setMessage('❌ Image size should be less than 10MB');
+  const handleFileSelect = (e, type) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        alert('File size must be less than 5MB');
         return;
       }
-
-      setUploading(true);
-      try {
-        const result = await uploadImage(file, type);
-        if (result.success) {
-          setMessage(`✅ ${type === 'profile' ? 'Profile' : 'Cover'} image updated!`);
-          setTimeout(() => setMessage(''), 3000);
-          
-          // Update the profile with new image
-          if (onImageUpload) {
-            onImageUpload(result.data.url, type);
-          }
-        } else {
-          setMessage('❌ Error uploading image: ' + result.error);
-        }
-      } catch (error) {
-        setMessage('❌ Error uploading image: ' + error.message);
+      if (!file.type.startsWith('image/')) {
+        alert('Please select a valid image file');
+        return;
       }
-      setUploading(false);
-    };
-    input.click();
-  };
-
-  const formatTimeAgo = (date) => {
-    if (!date) return 'Just now';
-    
-    const now = new Date();
-    const diffInSeconds = Math.floor((now - date) / 1000);
-    
-    if (diffInSeconds < 60) return 'Just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-    return `${Math.floor(diffInSeconds / 86400)}d ago`;
+      handleImageUpload(file, type);
+    }
   };
 
   return (
-    <div style={{ padding: '2rem' }}>
-      {/* Message Display */}
-      {message && (
-        <div style={{
-          padding: '1rem',
-          borderRadius: '8px',
-          backgroundColor: message.includes('✅') ? '#e8f8f6' : '#fff5f5',
-          color: message.includes('✅') ? '#4ecdc4' : '#ff6b6b',
-          border: `1px solid ${message.includes('✅') ? '#4ecdc4' : '#ff6b6b'}`,
-          marginBottom: '2rem',
-          fontWeight: 'bold'
-        }}>
-          {message}
-        </div>
-      )}
+    <div style={{ backgroundColor: 'white', borderRadius: '12px', overflow: 'hidden', minHeight: '600px' }}>
+      {/* Cover Photo Section */}
+      <div style={{ position: 'relative', height: '300px', overflow: 'hidden' }}>
+        {/* Cover Image */}
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            backgroundImage: profileData?.coverImage 
+              ? `url(${profileData.coverImage})` 
+              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            position: 'relative'
+          }}
+        >
+          {/* Gradient Overlay for better text readability */}
+          <div style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: '50%',
+            background: 'linear-gradient(transparent, rgba(0,0,0,0.4))'
+          }} />
 
-      {/* Cover Image Section */}
-      <div style={{
-        backgroundColor: 'white',
-        borderRadius: '12px',
-        overflow: 'hidden',
-        boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
-        position: 'relative',
-        marginBottom: '2rem'
-      }}>
-        <div style={{
-          height: '200px',
-          backgroundImage: profileData?.coverImage ? `url(${profileData.coverImage})` : 'linear-gradient(135deg, #4ecdc4, #44a08d)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          position: 'relative'
-        }}>
-          <button
-            onClick={() => handleImageUpload('cover')}
-            disabled={uploading}
-            style={{
-              position: 'absolute',
-              top: '10px',
-              right: '10px',
-              backgroundColor: 'rgba(0,0,0,0.7)',
-              color: 'white',
-              border: 'none',
-              padding: '0.5rem 1rem',
-              borderRadius: '6px',
-              cursor: uploading ? 'not-allowed' : 'pointer',
-              fontSize: '0.9rem',
-              opacity: uploading ? 0.7 : 1
-            }}
-          >
-            {uploading ? 'Uploading...' : '📷 Change Cover'}
-          </button>
-        </div>
-
-        {/* Profile Content */}
-        <div style={{ padding: '2rem', position: 'relative' }}>
-          {/* Profile Image */}
-          <div 
-            style={{
-              position: 'absolute',
-              top: '-50px',
-              left: '2rem',
-              width: '100px',
-              height: '100px',
-              borderRadius: '50%',
-              border: '4px solid white',
-              overflow: 'hidden',
-              backgroundColor: '#f8f9fa',
-              cursor: 'pointer'
-            }}
-            onClick={() => handleImageUpload('profile')}
-          >
-            <InitialsAvatar
-              name={profileData?.displayName || currentUser?.displayName || 'You'}
-              imageUrl={profileData?.profileImage || currentUser?.photoURL}
-              size={100}
-              fontSize={32}
-            />
-            <div style={{
-              position: 'absolute',
-              bottom: '5px',
-              right: '5px',
-              backgroundColor: '#4ecdc4',
-              color: 'white',
-              borderRadius: '50%',
-              width: '25px',
-              height: '25px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '0.7rem'
-            }}>
-              ✏️
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'flex-end', 
-            marginBottom: '1rem',
-            gap: '1rem'
-          }}>
-            {editMode ? (
-              <>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  style={{
-                    backgroundColor: '#4ecdc4',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.75rem 1.5rem',
-                    borderRadius: '6px',
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                    fontWeight: 'bold',
-                    opacity: saving ? 0.7 : 1
-                  }}
-                >
-                  {saving ? '💾 Saving...' : '💾 Save Changes'}
-                </button>
-                <button
-                  onClick={handleCancel}
-                  disabled={saving}
-                  style={{
-                    backgroundColor: '#6c757d',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.75rem 1.5rem',
-                    borderRadius: '6px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
+          {/* Cover Photo Upload Button */}
+          {currentUser?.uid === profileData?.uid && (
+            <div style={{ position: 'absolute', top: '20px', right: '20px' }}>
+              <input
+                type="file"
+                ref={coverImageRef}
+                onChange={(e) => handleFileSelect(e, 'cover')}
+                style={{ display: 'none' }}
+                accept="image/*"
+              />
               <button
-                onClick={() => setEditMode(true)}
+                onClick={() => coverImageRef.current?.click()}
+                disabled={uploading.cover}
                 style={{
-                  backgroundColor: '#4ecdc4',
-                  color: 'white',
+                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
                   border: 'none',
-                  padding: '0.75rem 1.5rem',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
+                  borderRadius: '8px',
+                  padding: '0.75rem 1rem',
+                  cursor: uploading.cover ? 'not-allowed' : 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: 'bold',
+                  color: '#333',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                  backdropFilter: 'blur(10px)'
                 }}
               >
-                ✏️ Edit Profile
+                {uploading.cover ? '⏳' : '📷'} 
+                {uploading.cover ? 'Uploading...' : 'Change Cover'}
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Profile Information */}
-          <div style={{ marginTop: '3rem' }}>
-            {/* Display Name */}
-            <div style={{ marginBottom: '2rem' }}>
-              <h2 style={{ 
-                margin: '0 0 0.5rem 0', 
-                color: '#333',
-                fontSize: '2rem',
-                fontWeight: 'bold'
+          {/* Profile Info Overlay */}
+          <div style={{
+            position: 'absolute',
+            bottom: '20px',
+            left: '20px',
+            right: '20px',
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: '20px',
+            zIndex: 2
+          }}>
+            {/* Profile Picture */}
+            <div style={{ position: 'relative' }}>
+              <div style={{
+                width: '120px',
+                height: '120px',
+                border: '4px solid white',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                backgroundColor: 'white',
+                boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
               }}>
-                {editMode ? (
-                  <input
-                    type="text"
-                    value={tempData.displayName}
-                    onChange={(e) => setTempData({...tempData, displayName: e.target.value})}
+                {profileData?.profileImage ? (
+                  <img
+                    src={profileData.profileImage}
+                    alt="Profile"
                     style={{
-                      border: 'none',
-                      background: 'transparent',
-                      fontSize: '2rem',
-                      fontWeight: 'bold',
-                      color: '#333',
-                      outline: 'none',
-                      borderBottom: '2px solid #4ecdc4',
-                      width: '100%'
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover'
                     }}
-                    placeholder="Your display name"
                   />
                 ) : (
-                  profileData?.displayName || 'Your Name'
-                )}
-              </h2>
-
-              {/* Username Section */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                {editingUsername ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: '#666' }}>@</span>
-                    <input
-                      type="text"
-                      value={newUsername}
-                      onChange={(e) => setNewUsername(e.target.value)}
-                      style={{
-                        padding: '0.25rem 0.5rem',
-                        border: '1px solid #4ecdc4',
-                        borderRadius: '4px',
-                        fontSize: '0.9rem'
-                      }}
-                      placeholder="Enter username"
-                    />
-                    <button
-                      onClick={handleUsernameUpdate}
-                      disabled={saving}
-                      style={{
-                        backgroundColor: '#4ecdc4',
-                        color: 'white',
-                        border: 'none',
-                        padding: '0.25rem 0.75rem',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.8rem'
-                      }}
-                    >
-                      {saving ? '...' : '✓'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingUsername(false);
-                        setNewUsername(profileData?.username || '');
-                      }}
-                      style={{
-                        backgroundColor: '#6c757d',
-                        color: 'white',
-                        border: 'none',
-                        padding: '0.25rem 0.75rem',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.8rem'
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: '#666', fontSize: '0.9rem' }}>
-                      @{profileData?.username || 'username_not_set'}
-                    </span>
-                    <button
-                      onClick={() => setEditingUsername(true)}
-                      style={{
-                        backgroundColor: 'transparent',
-                        border: '1px solid #4ecdc4',
-                        color: '#4ecdc4',
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.8rem'
-                      }}
-                    >
-                      ✏️ Edit
-                    </button>
-                  </div>
+                  <InitialsAvatar
+                    name={profileData?.displayName || 'User'}
+                    size={112}
+                    fontSize={36}
+                    style={{ width: '100%', height: '100%', borderRadius: 0 }}
+                  />
                 )}
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                {editMode ? (
-                  <select
-                    value={tempData.craftType}
-                    onChange={(e) => setTempData({...tempData, craftType: e.target.value})}
+              {/* Profile Picture Upload Button */}
+              {currentUser?.uid === profileData?.uid && (
+                <>
+                  <input
+                    type="file"
+                    ref={profileImageRef}
+                    onChange={(e) => handleFileSelect(e, 'profile')}
+                    style={{ display: 'none' }}
+                    accept="image/*"
+                  />
+                  <button
+                    onClick={() => profileImageRef.current?.click()}
+                    disabled={uploading.profile}
                     style={{
-                      backgroundColor: '#e8f8f6',
-                      color: '#4ecdc4',
-                      padding: '0.25rem 0.75rem',
-                      borderRadius: '12px',
-                      fontSize: '0.9rem',
-                      fontWeight: 'bold',
-                      border: 'none'
+                      position: 'absolute',
+                      bottom: '5px',
+                      right: '5px',
+                      backgroundColor: '#4ecdc4',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '35px',
+                      height: '35px',
+                      cursor: uploading.profile ? 'not-allowed' : 'pointer',
+                      fontSize: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
                     }}
+                    title="Change profile picture"
                   >
-                    <option value="">Select craft type</option>
-                    {skillsList.map(skill => (
-                      <option key={skill} value={skill}>{skill}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <span style={{
-                    backgroundColor: '#e8f8f6',
-                    color: '#4ecdc4',
-                    padding: '0.25rem 0.75rem',
-                    borderRadius: '12px',
-                    fontSize: '0.9rem',
-                    fontWeight: 'bold'
-                  }}>
-                    🎨 {profileData?.craftType || 'Artisan'}
-                  </span>
-                )}
-
-                <span style={{ color: '#666', fontSize: '0.9rem' }}>
-                  📍 {editMode ? (
-                    <input
-                      type="text"
-                      value={tempData.location}
-                      onChange={(e) => setTempData({...tempData, location: e.target.value})}
-                      style={{
-                        border: 'none',
-                        background: 'transparent',
-                        fontSize: '0.9rem',
-                        color: '#666',
-                        outline: 'none',
-                        borderBottom: '1px solid #4ecdc4'
-                      }}
-                      placeholder="Your location"
-                    />
-                  ) : (
-                    profileData?.location || 'Location not set'
-                  )}
-                </span>
-
-                <span style={{ color: '#666', fontSize: '0.9rem' }}>
-                  👥 {profileData?.followers || 0} followers
-                </span>
-
-                <span style={{ color: '#666', fontSize: '0.9rem' }}>
-                  👥 {profileData?.following || 0} following  
-                </span>
-
-                {profileData?.verified && (
-                  <span style={{ color: '#4ecdc4', fontSize: '1rem' }} title="Verified Artist">
-                    ✓ Verified
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Bio Section */}
-            <div style={{ marginBottom: '2rem' }}>
-              <h3 style={{ color: '#4ecdc4', marginBottom: '1rem' }}>Bio</h3>
-              {editMode ? (
-                <textarea
-                  value={tempData.bio}
-                  onChange={(e) => setTempData({...tempData, bio: e.target.value})}
-                  rows={3}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #ddd',
-                    borderRadius: '6px',
-                    fontSize: '1rem',
-                    resize: 'vertical'
-                  }}
-                  placeholder="Tell people about your craft and passion..."
-                />
-              ) : (
-                <p style={{ color: '#666', lineHeight: '1.6', margin: 0 }}>
-                  {profileData?.bio || 'No bio added yet. Click edit to add your story!'}
-                </p>
+                    {uploading.profile ? '⏳' : '📷'}
+                  </button>
+                </>
               )}
             </div>
 
-            {/* Skills Section */}
-            <div style={{ marginBottom: '2rem' }}>
-              <h3 style={{ color: '#4ecdc4', marginBottom: '1rem' }}>Skills & Specializations</h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                {editMode ? (
-                  skillsList.map(skill => (
-                    <button
-                      key={skill}
-                      onClick={() => handleSkillToggle(skill)}
-                      style={{
-                        backgroundColor: tempData.skills?.includes(skill) ? '#4ecdc4' : '#f8f9fa',
-                        color: tempData.skills?.includes(skill) ? 'white' : '#666',
-                        border: '1px solid #ddd',
-                        padding: '0.5rem 1rem',
-                        borderRadius: '20px',
-                        cursor: 'pointer',
-                        fontSize: '0.9rem',
-                        fontWeight: tempData.skills?.includes(skill) ? 'bold' : 'normal'
-                      }}
-                    >
-                      {skill}
-                    </button>
-                  ))
-                ) : (
-                  profileData?.skills?.length > 0 ? (
-                    profileData.skills.map(skill => (
-                      <span
-                        key={skill}
-                        style={{
-                          backgroundColor: '#4ecdc4',
-                          color: 'white',
-                          padding: '0.5rem 1rem',
-                          borderRadius: '20px',
-                          fontSize: '0.9rem',
-                          fontWeight: 'bold'
-                        }}
-                      >
-                        {skill}
-                      </span>
-                    ))
-                  ) : (
-                    <p style={{ color: '#666', fontStyle: 'italic' }}>
-                      No skills added yet. Edit your profile to showcase your expertise!
-                    </p>
-                  )
-                )}
+            {/* User Info */}
+            <div style={{ flex: 1, color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
+              <h1 style={{ 
+                margin: '0 0 0.5rem 0', 
+                fontSize: '2.5rem', 
+                fontWeight: 'bold',
+                lineHeight: '1.2'
+              }}>
+                {profileData?.displayName || 'Artisan'}
+              </h1>
+              
+              <div style={{ 
+                fontSize: '1.2rem', 
+                opacity: 0.9,
+                marginBottom: '0.5rem'
+              }}>
+                @{profileData?.username || 'username'}
+              </div>
+
+              <div style={{
+                display: 'flex',
+                gap: '1rem',
+                fontSize: '1rem',
+                opacity: 0.8,
+                flexWrap: 'wrap'
+              }}>
+                <span>🎨 {profileData?.craftType || 'General Artisan'}</span>
+                <span>📍 {profileData?.location || 'Unknown'}</span>
+                <span>⭐ {profileData?.experience || 'Beginner'}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* User Posts Section */}
-      <div style={{
-  backgroundColor: 'white',
-  borderRadius: '12px',
-  overflow: 'hidden',
-  boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
-  padding: '2rem'
-}}>
-  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-    <h3 style={{ margin: 0, color: '#333', fontSize: '1.5rem' }}>
-      📚 Your Posts ({userPosts.length})
-    </h3>
-    <div style={{
-      backgroundColor: postsLoading ? '#f8f9fa' : '#e8f8f6',
-      color: postsLoading ? '#666' : '#4ecdc4',
-      padding: '0.5rem 1rem',
-      borderRadius: '20px',
-      fontSize: '0.9rem',
-      fontWeight: 'bold'
-    }}>
-      {postsLoading ? 'Loading...' : `${userPosts.length} posts`}
-    </div>
-  </div>
-
-  {postsLoading ? (
-    <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-      <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
-      <p>Loading your posts...</p>
-    </div>
-  ) : postsError ? (
-    <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-      <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⚠️</div>
-      <p style={{ color: '#ff6b6b' }}>{postsError}</p>
-      {postsError.includes('Index') && (
-        <p style={{ color: '#4ecdc4', fontSize: '0.9rem' }}>
-          This usually takes 2-5 minutes. Your posts will appear automatically once ready.
-        </p>
-      )}
-    </div>
-  ) : userPosts.length === 0 ? (
-    <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-      <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎨</div>
-      <h4 style={{ margin: '0 0 0.5rem 0' }}>No Posts Yet</h4>
-      <p style={{ margin: '0 0 1rem 0' }}>
-        Share your first creation with the community!
-      </p>
-      <p style={{ color: '#4ecdc4', fontSize: '0.9rem' }}>
-        Go to "Create Post" to showcase your artwork
-      </p>
-    </div>
-  ) : (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      gap: '1.5rem' 
-    }}>
-      {userPosts.map((post) => (
-        <div
-          key={post.id}
-          style={{
-            backgroundColor: '#f8f9fa',
-            borderRadius: '12px',
-            overflow: 'hidden',
-            border: '1px solid #e9ecef',
-            position: 'relative'
-          }}
-        >
-          {/* Post Header with Delete Button */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '1rem',
-            borderBottom: '1px solid #e9ecef'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <InitialsAvatar
-                name={post.authorName || 'You'}
-                imageUrl={post.authorAvatar || profileData?.profileImage}
-                size={40}
-                fontSize={16}
-                style={{ marginRight: '0.75rem' }}
-              />
-              <div>
-                <div style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>
-                  {post.authorName || profileData?.displayName || 'You'}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: '#666' }}>
-                  {formatTimeAgo(post.createdAt)}
-                </div>
-              </div>
-            </div>
-            
-            {/* Delete Button */}
-            <button
-              onClick={() => handleDeletePost(post.id, post.title)}
-              style={{
-                backgroundColor: '#ff4757',
-                color: 'white',
-                border: 'none',
-                padding: '0.5rem 1rem',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                fontWeight: 'bold',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}
-              onMouseOver={(e) => e.target.style.backgroundColor = '#ff3742'}
-              onMouseOut={(e) => e.target.style.backgroundColor = '#ff4757'}
-            >
-              🗑️ Delete
-            </button>
+      {/* Profile Content */}
+      <div style={{ padding: '2rem' }}>
+        {/* Action Buttons */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          marginBottom: '2rem',
+          paddingBottom: '1rem',
+          borderBottom: '1px solid #f0f0f0'
+        }}>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <span style={{ color: '#666' }}>
+              👥 <strong>{profileData?.followers || 0}</strong> followers
+            </span>
+            <span style={{ color: '#666' }}>
+              🔗 <strong>{profileData?.following || 0}</strong> following
+            </span>
+            <span style={{ color: '#666' }}>
+              📷 <strong>{profileData?.postsCount || 0}</strong> posts
+            </span>
           </div>
 
-          {/* Post Image */}
-          {post.imageUrl && (
-            <div style={{ position: 'relative' }}>
-              <img
-                src={post.imageUrl}
-                alt={post.title}
-                style={{
-                  width: '100%',
-                  height: '300px',
-                  objectFit: 'cover'
-                }}
-              />
-            </div>
-          )}
-          
-          {/* Post Content */}
-          <div style={{ padding: '1rem' }}>
-            <h4 style={{ 
-              margin: '0 0 0.5rem 0', 
-              fontSize: '1.2rem',
-              fontWeight: 'bold',
-              color: '#333'
-            }}>
-              {post.title}
-            </h4>
-            
-            {post.description && (
-              <p style={{ 
-                margin: '0 0 1rem 0', 
-                color: '#666', 
-                fontSize: '0.95rem',
-                lineHeight: '1.5'
-              }}>
-                {post.description}
-              </p>
-            )}
-
-            {/* Tags */}
-            {post.tags && post.tags.length > 0 && (
-              <div style={{ 
-                display: 'flex', 
-                flexWrap: 'wrap', 
-                gap: '0.5rem',
-                marginBottom: '1rem'
-              }}>
-                {post.tags.map((tag) => (
-                  <span
-                    key={tag}
+          {currentUser?.uid === profileData?.uid && (
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              {isEditing ? (
+                <>
+                  <button
+                    onClick={handleSave}
                     style={{
-                      backgroundColor: '#e8f8f6',
-                      color: '#4ecdc4',
-                      padding: '0.2rem 0.6rem',
-                      borderRadius: '12px',
-                      fontSize: '0.8rem',
+                      backgroundColor: '#4ecdc4',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.75rem 1.5rem',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
                       fontWeight: 'bold'
                     }}
                   >
-                    #{tag}
+                    💾 Save Changes
+                  </button>
+                  <button
+                    onClick={cancelEditing}
+                    style={{
+                      backgroundColor: '#ff6b6b',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.75rem 1.5rem',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    ❌ Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={startEditing}
+                  style={{
+                    backgroundColor: '#4ecdc4',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.75rem 1.5rem',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  ✏️ Edit Profile
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Error Messages */}
+        {errors.general && (
+          <div style={{
+            backgroundColor: '#fee',
+            color: '#c33',
+            padding: '1rem',
+            borderRadius: '8px',
+            marginBottom: '2rem',
+            textAlign: 'center'
+          }}>
+            {errors.general}
+          </div>
+        )}
+
+        {isEditing ? (
+          /* EDIT MODE */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {/* Basic Info Section */}
+            <div>
+              <h3 style={{ 
+                color: '#333', 
+                marginBottom: '1.5rem',
+                fontSize: '1.3rem',
+                fontWeight: 'bold'
+              }}>
+                📝 Basic Information
+              </h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                {/* Display Name */}
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: 'bold', 
+                    color: '#333' 
+                  }}>
+                    Display Name *
+                  </label>
+                  <input
+                    type="text"
+                    name="displayName"
+                    value={editData.displayName || ''}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '1rem',
+                      border: errors.displayName ? '2px solid #ff6b6b' : '2px solid #e9ecef',
+                      borderRadius: '8px',
+                      fontSize: '1rem',
+                      outline: 'none'
+                    }}
+                  />
+                  {errors.displayName && (
+                    <span style={{ color: '#ff6b6b', fontSize: '0.8rem' }}>
+                      {errors.displayName}
+                    </span>
+                  )}
+                </div>
+
+                {/* Username */}
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: 'bold', 
+                    color: '#333' 
+                  }}>
+                    Username (@) *
+                  </label>
+                  <input
+                    type="text"
+                    name="username"
+                    value={editData.username || ''}
+                    onChange={handleInputChange}
+                    placeholder="username"
+                    style={{
+                      width: '100%',
+                      padding: '1rem',
+                      border: errors.username ? '2px solid #ff6b6b' : '2px solid #e9ecef',
+                      borderRadius: '8px',
+                      fontSize: '1rem',
+                      outline: 'none'
+                    }}
+                  />
+                  {errors.username && (
+                    <span style={{ color: '#ff6b6b', fontSize: '0.8rem' }}>
+                      {errors.username}
+                    </span>
+                  )}
+                </div>
+
+                {/* Craft Type */}
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: 'bold', 
+                    color: '#333' 
+                  }}>
+                    Craft Type
+                  </label>
+                  <select
+                    name="craftType"
+                    value={editData.craftType || ''}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '1rem',
+                      border: '2px solid #e9ecef',
+                      borderRadius: '8px',
+                      fontSize: '1rem',
+                      outline: 'none',
+                      backgroundColor: 'white'
+                    }}
+                  >
+                    <option value="General">General</option>
+                    <option value="Pottery">Pottery</option>
+                    <option value="Jewelry">Jewelry</option>
+                    <option value="Woodworking">Woodworking</option>
+                    <option value="Textiles">Textiles</option>
+                    <option value="Painting">Painting</option>
+                    <option value="Sculpture">Sculpture</option>
+                    <option value="Ceramics">Ceramics</option>
+                    <option value="Leatherwork">Leatherwork</option>
+                    <option value="Metalwork">Metalwork</option>
+                    <option value="Glasswork">Glasswork</option>
+                  </select>
+                </div>
+
+                {/* Experience Level */}
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: 'bold', 
+                    color: '#333' 
+                  }}>
+                    Experience Level
+                  </label>
+                  <select
+                    name="experience"
+                    value={editData.experience || ''}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '1rem',
+                      border: '2px solid #e9ecef',
+                      borderRadius: '8px',
+                      fontSize: '1rem',
+                      outline: 'none',
+                      backgroundColor: 'white'
+                    }}
+                  >
+                    <option value="Beginner">Beginner (0-1 years)</option>
+                    <option value="Intermediate">Intermediate (2-5 years)</option>
+                    <option value="Advanced">Advanced (5-10 years)</option>
+                    <option value="Expert">Expert (10+ years)</option>
+                    <option value="Master">Master Craftsperson</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Location Section */}
+            <div>
+              <h3 style={{ 
+                color: '#333', 
+                marginBottom: '1.5rem',
+                fontSize: '1.3rem',
+                fontWeight: 'bold'
+              }}>
+                📍 Location & Contact
+              </h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                {/* Location */}
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: 'bold', 
+                    color: '#333' 
+                  }}>
+                    Location
+                  </label>
+                  <input
+                    type="text"
+                    name="location"
+                    value={editData.location || ''}
+                    onChange={handleInputChange}
+                    placeholder="City, State, Country"
+                    style={{
+                      width: '100%',
+                      padding: '1rem',
+                      border: '2px solid #e9ecef',
+                      borderRadius: '8px',
+                      fontSize: '1rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: 'bold', 
+                    color: '#333' 
+                  }}>
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={editData.phone || ''}
+                    onChange={handleInputChange}
+                    placeholder="+1 (555) 123-4567"
+                    style={{
+                      width: '100%',
+                      padding: '1rem',
+                      border: '2px solid #e9ecef',
+                      borderRadius: '8px',
+                      fontSize: '1rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Website */}
+              <div style={{ marginTop: '1.5rem' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '0.5rem', 
+                  fontWeight: 'bold', 
+                  color: '#333' 
+                }}>
+                  Website
+                </label>
+                <input
+                  type="url"
+                  name="website"
+                  value={editData.website || ''}
+                  onChange={handleInputChange}
+                  placeholder="https://yourwebsite.com"
+                  style={{
+                    width: '100%',
+                    padding: '1rem',
+                    border: errors.website ? '2px solid #ff6b6b' : '2px solid #e9ecef',
+                    borderRadius: '8px',
+                    fontSize: '1rem',
+                    outline: 'none'
+                  }}
+                />
+                {errors.website && (
+                  <span style={{ color: '#ff6b6b', fontSize: '0.8rem' }}>
+                    {errors.website}
                   </span>
-                ))}
+                )}
+              </div>
+            </div>
+
+            {/* Bio Section */}
+            <div>
+              <h3 style={{ 
+                color: '#333', 
+                marginBottom: '1.5rem',
+                fontSize: '1.3rem',
+                fontWeight: 'bold'
+              }}>
+                📖 About You
+              </h3>
+              
+              <textarea
+                name="bio"
+                value={editData.bio || ''}
+                onChange={handleInputChange}
+                placeholder="Tell us about yourself, your craft, and your journey as an artisan..."
+                rows="5"
+                style={{
+                  width: '100%',
+                  padding: '1rem',
+                  border: '2px solid #e9ecef',
+                  borderRadius: '8px',
+                  fontSize: '1rem',
+                  resize: 'vertical',
+                  outline: 'none',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
+
+            {/* Skills Section */}
+            <div>
+              <h3 style={{ 
+                color: '#333', 
+                marginBottom: '1.5rem',
+                fontSize: '1.3rem',
+                fontWeight: 'bold'
+              }}>
+                🛠️ Skills & Techniques
+              </h3>
+              
+              {/* Current Skills */}
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  flexWrap: 'wrap', 
+                  gap: '0.5rem', 
+                  marginBottom: '1rem' 
+                }}>
+                  {editData.skills?.map((skill, index) => (
+                    <span
+                      key={index}
+                      style={{
+                        backgroundColor: '#4ecdc4',
+                        color: 'white',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '20px',
+                        fontSize: '0.9rem',
+                        fontWeight: 'bold',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                      }}
+                    >
+                      {skill}
+                      <button
+                        onClick={() => removeSkill(skill)}
+                        style={{
+                          background: 'rgba(255,255,255,0.3)',
+                          border: 'none',
+                          color: 'white',
+                          borderRadius: '50%',
+                          width: '20px',
+                          height: '20px',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Add New Skill */}
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: 'bold', 
+                    color: '#333' 
+                  }}>
+                    Add New Skill
+                  </label>
+                  <input
+                    type="text"
+                    value={newSkill}
+                    onChange={(e) => setNewSkill(e.target.value)}
+                    onKeyPress={handleSkillKeyPress}
+                    placeholder="e.g., Hand Carving, Color Theory, Glazing..."
+                    style={{
+                      width: '100%',
+                      padding: '1rem',
+                      border: '2px solid #e9ecef',
+                      borderRadius: '8px',
+                      fontSize: '1rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={addSkill}
+                  disabled={!newSkill.trim()}
+                  style={{
+                    backgroundColor: newSkill.trim() ? '#4ecdc4' : '#ccc',
+                    color: 'white',
+                    border: 'none',
+                    padding: '1rem 1.5rem',
+                    borderRadius: '8px',
+                    cursor: newSkill.trim() ? 'pointer' : 'not-allowed',
+                    fontSize: '1rem',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  ➕ Add
+                </button>
+              </div>
+              <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
+                Press Enter or click Add to add a skill. Click the × to remove skills.
+              </p>
+            </div>
+          </div>
+        ) : (
+          /* VIEW MODE */
+          <>
+            {/* Bio Section */}
+            <div style={{ marginBottom: '2rem' }}>
+              <h3 style={{ 
+                color: '#333', 
+                marginBottom: '1rem',
+                fontSize: '1.3rem',
+                fontWeight: 'bold'
+              }}>
+                📖 About
+              </h3>
+              
+              <p style={{ 
+                color: '#666', 
+                fontSize: '1.1rem',
+                lineHeight: '1.6',
+                margin: 0
+              }}>
+                {profileData?.bio || 'This artisan hasn\'t added a bio yet.'}
+              </p>
+            </div>
+
+            {/* Skills Section */}
+            {profileData?.skills && profileData.skills.length > 0 && (
+              <div style={{ marginBottom: '2rem' }}>
+                <h3 style={{ 
+                  color: '#333', 
+                  marginBottom: '1rem',
+                  fontSize: '1.3rem',
+                  fontWeight: 'bold'
+                }}>
+                  🛠️ Skills & Techniques
+                </h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {profileData.skills.map((skill, index) => (
+                    <span
+                      key={index}
+                      style={{
+                        backgroundColor: '#e8f8f6',
+                        color: '#4ecdc4',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '20px',
+                        fontSize: '0.9rem',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* Post Stats */}
-            <div style={{ 
-              display: 'flex', 
-              gap: '1.5rem',
-              fontSize: '0.85rem',
-              color: '#666',
-              paddingTop: '1rem',
-              borderTop: '1px solid #e9ecef'
-            }}>
-              <span>❤️ {post.likes || 0} likes</span>
-              <span>💬 {post.comments || 0} comments</span>
-              <span>📤 {post.shares || 0} shares</span>
-              <span>👀 {post.views || 0} views</span>
+            {/* Contact Info */}
+            <div>
+              <h3 style={{ 
+                color: '#333', 
+                marginBottom: '1rem',
+                fontSize: '1.3rem',
+                fontWeight: 'bold'
+              }}>
+                📞 Contact Information
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', color: '#666' }}>
+                <div>📧 {profileData?.email || currentUser?.email}</div>
+                {profileData?.phone && <div>📱 {profileData.phone}</div>}
+                {profileData?.website && (
+                  <div>
+                    🌐 <a 
+                        href={profileData.website} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        style={{ color: '#4ecdc4', textDecoration: 'none' }}
+                      >
+                        {profileData.website}
+                      </a>
+                  </div>
+                )}
+                <div>📅 Joined {new Date(profileData?.createdAt?.seconds * 1000 || Date.now()).toLocaleDateString()}</div>
+              </div>
             </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )}
-</div>
+          </>
+        )}
+      </div>
     </div>
   );
 };

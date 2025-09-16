@@ -13,15 +13,15 @@ const AIAssistant = ({ isOpen, onToggle, artisanData }) => {
       setMessages([{
         id: 1,
         type: 'ai',
-        content: `🎨 Hello ${artisanData?.displayName || 'there'}! I'm your **Smart CraftAI Assistant**.
+        content: `🎨 Hello ${artisanData?.displayName || 'there'}! I'm your "Smart KraftHouse Assistant".
 
 I can help you with:
-✨ **Creative project ideas** for ${artisanData?.craftType || 'your craft'}
-🛠️ **Tool recommendations** for your skill level (${artisanData?.experience || 'beginner'})
-🎨 **Color theory & design** guidance
-📈 **Marketing strategies** for your handmade business
-💰 **Pricing advice** for ${artisanData?.location || 'your area'}
-🎯 **Skill development** roadmaps
+✨ Creative project ideas for ${artisanData?.craftType || 'your craft'}
+🛠️ Tool recommendations for your skill level (${artisanData?.experience || 'beginner'})
+🎨 Color theory & design guidance
+📈 Marketing strategies for your handmade business
+💰 Pricing advice for ${artisanData?.location || 'your area'}
+🎯 Skill development roadmaps
 
 Ask me anything specific about crafts, techniques, or growing your artisan business!`,
         timestamp: new Date()
@@ -48,16 +48,16 @@ To enable AI responses, please:
 2. Add it to your .env file: \`REACT_APP_GEMINI_API_KEY=your_key_here\`
 3. Restart your development server
 
-**Meanwhile, here's some helpful advice for "${userMessage}":**
+Meanwhile, here's some helpful advice for "${userMessage}":
 
-🎨 **Quick Tips:**
+🎨 Quick Tips:
 - Research master craftspeople in your field for inspiration
 - Practice fundamental techniques daily (even 15 minutes helps!)
 - Document your process with photos to track improvement
 - Connect with artisan communities online for support
 - Start with quality basic tools before investing in advanced equipment
 
-💡 **Next Steps:**
+💡 Next Steps:
 1. Break your goal into 3 smaller, actionable tasks
 2. Set aside focused practice time this week
 3. Join artisan Facebook groups or subreddits
@@ -162,20 +162,20 @@ Keep response under 150 words. Use emojis and formatting for readability.`;
     const experience = userData?.experience?.toLowerCase() || 'beginner';
 
     if (message.includes('project') || message.includes('idea')) {
-      return `🎨 **${craft.charAt(0).toUpperCase() + craft.slice(1)} Project Ideas for ${experience.charAt(0).toUpperCase() + experience.slice(1)}s:**
+      return `🎨 ${craft.charAt(0).toUpperCase() + craft.slice(1)} Project Ideas for ${experience.charAt(0).toUpperCase() + experience.slice(1)}s:
 
-**Beginner-Friendly:**
-1. **Simple ${craft} coasters** - Practice basic techniques with quick results
-2. **Mini decorative pieces** - Build confidence with small projects  
-3. **Color study samples** - Experiment with different combinations
+Beginner-Friendly:
+1. Simple ${craft} coasters - Practice basic techniques with quick results
+2. Mini decorative pieces - Build confidence with small projects  
+3. Color study samples - Experiment with different combinations
 
-**Next Level:**
-4. **Functional items** - Combine beauty with utility
-5. **Seasonal decorations** - Create items for holidays/seasons
+Next Level:
+4. Functional items - Combine beauty with utility
+5. Seasonal decorations - Create items for holidays/seasons
 
-💡 **Pro Tip:** Start with one project, master it completely, then move to the next. Quality over quantity always wins!
+💡 Pro Tip: Start with one project, master it completely, then move to the next. Quality over quantity always wins!
 
-**Materials you'll need:** Basic ${craft} supplies, good lighting, and patience. Budget around $20-50 to start.
+Materials you'll need: Basic ${craft} supplies, good lighting, and patience. Budget around $20-50 to start.
 
 What type of project appeals to you most?`;
     }
@@ -183,25 +183,25 @@ What type of project appeals to you most?`;
     if (message.includes('tool') || message.includes('equipment')) {
       return `🛠️ **Essential ${craft.charAt(0).toUpperCase() + craft.slice(1)} Tools for ${experience.charAt(0).toUpperCase() + experience.slice(1)}s:**
 
-**Must-Have Basics ($30-60):**
+Must-Have Basics ($30-60):
 - Quality basic tools (specific to your craft)
 - Good lighting setup
 - Workspace organization system
 - Basic measuring tools
 
-**Next Investment ($60-150):**
+Next Investment ($60-150):
 - Professional-grade primary tool
 - Specialized accessories
 - Storage solutions
 - Quality materials
 
-**Advanced Tools (When ready):**
+Advanced Tools (When ready):
 - Power tools or specialized equipment
 - Professional finishing supplies
 
-💰 **Budget Strategy:** Buy quality basics first, cheap tools cost more in the long run. One good tool is better than three mediocre ones.
+💰 Budget Strategy: Buy quality basics first, cheap tools cost more in the long run. One good tool is better than three mediocre ones.
 
-🎯 **Today's Action:** Research one tool you need most and read 3 reviews from actual craftspeople.
+🎯 Today's Action: Research one tool you need most and read 3 reviews from actual craftspeople.
 
 What's the next tool on your wishlist?`;
     }
@@ -209,50 +209,50 @@ What's the next tool on your wishlist?`;
     if (message.includes('color') || message.includes('design')) {
       return `🎨 **Color & Design Mastery for ${craft.charAt(0).toUpperCase() + craft.slice(1)}:**
 
-**Color Theory Basics:**
-- **Complementary colors** create vibrant contrast
-- **Analogous colors** give harmony and calm
-- **Triadic colors** offer balanced diversity
+Color Theory Basics:
+- Complementary colors create vibrant contrast
+- Analogous colors give harmony and calm
+- Triadic colors offer balanced diversity
 
-**Design Principles:**
-1. **Rule of thirds** - Place focal points strategically
-2. **Balance** - Distribute visual weight evenly
-3. **Contrast** - Use light/dark, rough/smooth differences
-4. **Unity** - Keep consistent style elements
+Design Principles:
+1. Rule of thirds - Place focal points strategically
+2. Balance - Distribute visual weight evenly
+3. Contrast - Use light/dark, rough/smooth differences
+4. Unity - Keep consistent style elements
 
-**For ${craft} specifically:**
+For your specifically:
 - Study master pieces in your field
 - Create color swatches before starting projects
 - Practice with monochrome first, then add colors
 - Take photos to see your work objectively
 
-🌈 **This Week's Challenge:** Create 5 color combinations and test them on small sample pieces.
+🌈 This Week's Challenge: Create 5 color combinations and test them on small sample pieces.
 
 What colors are you most drawn to in your work?`;
     }
 
     if (message.includes('sell') || message.includes('price') || message.includes('market')) {
-      return `💰 **Pricing & Marketing Your ${craft.charAt(0).toUpperCase() + craft.slice(1)} Work:**
+      return `💰 Pricing & Marketing Your ${craft.charAt(0).toUpperCase() + craft.slice(1)} Work:
 
-**Pricing Formula:**
+Pricing Formula:
 - Materials cost × 2 = Base price
 - Add hourly wage (minimum $15-25/hour)
 - Add 10-20% for business expenses
 - Research competitor prices in ${userData?.location || 'your area'}
 
-**Marketing Strategies:**
-1. **Instagram/TikTok** - Show your process, not just results
-2. **Local craft fairs** - Build personal connections
-3. **Etsy/online shops** - Reach global customers
-4. **Word of mouth** - Your best marketing tool
+Marketing Strategies:
+1. Instagram/TikTok - Show your process, not just results
+2. Local craft fairs - Build personal connections
+3. Etsy/online shops - Reach global customers
+4. Word of mouth - Your best marketing tool
 
-**Content Ideas:**
+Content Ideas:
 - Time-lapse creation videos
 - Behind-the-scenes process shots
 - Customer testimonials and photos
 - Educational posts about your craft
 
-📈 **This Month's Goal:** Post 3 process videos and price 5 of your best pieces using the formula above.
+📈 This Month's Goal: Post 3 process videos and price 5 of your best pieces using the formula above.
 
 What's your biggest challenge with selling your work?`;
     }
@@ -260,27 +260,27 @@ What's your biggest challenge with selling your work?`;
     // General craft advice
     return `💡 **Expert Advice for "${userMessage}":**
 
-**For ${craft.charAt(0).toUpperCase() + craft.slice(1)} at ${experience.charAt(0).toUpperCase() + experience.slice(1)} Level:**
+For ${craft.charAt(0).toUpperCase() + craft.slice(1)} at ${experience.charAt(0).toUpperCase() + experience.slice(1)} Level:
 
-🎯 **Immediate Actions:**
+🎯 Immediate Actions:
 - Focus on mastering one technique at a time
 - Document your process with photos
 - Practice consistently, even if just 15 minutes daily
 - Connect with other ${craft} artisans online
 
-🛠️ **Skill Building:**
+🛠️ Skill Building:
 - Watch master craftspeople on YouTube
 - Join ${craft} Facebook groups or Reddit communities
 - Take before/after photos to track improvement
 - Ask specific questions in artisan forums
 
-📚 **Learning Resources:**
-- Library books on ${craft} techniques
+📚 Learning Resources:
+- Library books on your crafting techniques
 - Online courses from established artisans
 - Local workshops or classes
 - Museum visits for inspiration
 
-🎨 **Creative Development:**
+🎨 Creative Development:
 - Study work you admire - what makes it special?
 - Experiment with new materials or techniques monthly
 - Keep an inspiration folder/board

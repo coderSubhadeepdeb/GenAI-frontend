@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import UserProfile from './UserProfile';
@@ -7,8 +7,7 @@ import UserSearch from './UserSearch';
 import ContentCreator from './ContentCreator';
 import AnalyticsSection from './AnalyticsSection';
 import SettingsSection from './SettingsSection';
-import AIAssistant from '../chatbot/AIAssistant'; 
-import { useCallback } from 'react'; 
+import AIAssistant from '../chatbot/AIAssistant';
 
 const Dashboard = () => {
   const { 
@@ -20,7 +19,12 @@ const Dashboard = () => {
     uploadImage,
     createPost,
     searchUsers,
-    getUserPosts
+    getUserPosts,
+    likePost,
+    commentOnPost,
+    sharePost,
+    followUser,
+    unfollowUser
   } = useAuth();
   
   const navigate = useNavigate();
@@ -28,8 +32,6 @@ const Dashboard = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [userPosts, setUserPosts] = useState([]);
   const [postsLoading, setPostsLoading] = useState(false);
-  
-  // AI Assistant State
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
 
   // Redirect if not authenticated
@@ -40,14 +42,6 @@ const Dashboard = () => {
   }, [currentUser, navigate]);
 
   // Load user posts when profile is loaded
-  useEffect(() => {
-    if (currentUser && !profileLoading) {
-      loadUserPosts();
-    }
-  }, [currentUser, profileLoading]); // Remove loadUserPosts from dependency array
-  
-  // Instead, wrap loadUserPosts in useCallback:
-  
   const loadUserPosts = useCallback(async () => {
     setPostsLoading(true);
     try {
@@ -57,7 +51,14 @@ const Dashboard = () => {
       console.error('Error loading posts:', error);
     }
     setPostsLoading(false);
-  }, [getUserPosts]); // Add getUserPosts as dependency
+  }, [getUserPosts]);
+
+  useEffect(() => {
+    if (currentUser && !profileLoading) {
+      loadUserPosts();
+    }
+  }, [currentUser, profileLoading, loadUserPosts]);
+
   const handleLogout = async () => {
     await logout();
     navigate('/');
@@ -90,7 +91,9 @@ const Dashboard = () => {
       if (result.success) {
         const updateData = type === 'profile' 
           ? { profileImage: result.data.url }
-          : { coverImage: result.data.url };
+          : type === 'cover'
+            ? { coverImage: result.data.url }
+            : {};
         
         await handleProfileUpdate(updateData);
         return result;
@@ -120,6 +123,66 @@ const Dashboard = () => {
     console.log('🤖 AI Assistant toggled:', !isAIAssistantOpen);
   };
 
+  // Post interaction handlers
+  const handleLike = async (postId) => {
+    try {
+      const result = await likePost(postId);
+      if (result.success) {
+        await loadUserPosts(); // Refresh posts to show updated likes
+      }
+      return result;
+    } catch (error) {
+      console.error('Error liking post:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const handleComment = async (postId, comment) => {
+    try {
+      const result = await commentOnPost(postId, comment);
+      if (result.success) {
+        await loadUserPosts(); // Refresh posts to show new comment
+      }
+      return result;
+    } catch (error) {
+      console.error('Error commenting on post:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const handleShare = async (postId) => {
+    try {
+      const result = await sharePost(postId);
+      if (result.success) {
+        await loadUserPosts(); // Refresh posts to show updated shares
+      }
+      return result;
+    } catch (error) {
+      console.error('Error sharing post:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const handleFollow = async (userId) => {
+    try {
+      const result = await followUser(userId);
+      return result;
+    } catch (error) {
+      console.error('Error following user:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const handleUnfollow = async (userId) => {
+    try {
+      const result = await unfollowUser(userId);
+      return result;
+    } catch (error) {
+      console.error('Error unfollowing user:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
   const tabs = [
     { id: 'profile', name: 'My Profile', icon: '👤' },
     { id: 'posts', name: 'My Posts', icon: '📷' },
@@ -127,7 +190,7 @@ const Dashboard = () => {
     { id: 'search', name: 'Find Artisans', icon: '🔍' },
     { id: 'analytics', name: 'Analytics', icon: '📊' },
     { id: 'settings', name: 'Settings', icon: '⚙️' },
-    { id: 'ai-assistant', name: 'AI Assistant', icon: '🤖' } // Add AI tab
+    { id: 'ai-assistant', name: 'AI Assistant', icon: '🤖' }
   ];
 
   // Show loading while profile is being loaded
@@ -142,14 +205,16 @@ const Dashboard = () => {
         backgroundColor: '#f8f9fa'
       }}>
         <div style={{ 
-          fontSize: '4rem', 
+          width: '60px',
+          height: '60px',
+          border: '4px solid #4ecdc4',
+          borderTop: '4px solid transparent',
+          borderRadius: '50%',
           marginBottom: '1rem',
-          animation: 'spin 2s linear infinite'
-        }}>
-          🎨
-        </div>
+          animation: 'spin 1s linear infinite'
+        }}></div>
         <h2 style={{ color: '#4ecdc4', marginBottom: '0.5rem' }}>
-          Loading Your Artisan Dashboard...
+          Loading Your KraftHouse Dashboard...
         </h2>
         <p style={{ color: '#666', textAlign: 'center' }}>
           Preparing your creative workspace and profile data
@@ -175,7 +240,11 @@ const Dashboard = () => {
         flexDirection: 'column',
         backgroundColor: '#f8f9fa'
       }}>
-        <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>❌</div>
+        <div style={{ 
+          fontSize: '4rem', 
+          marginBottom: '1rem',
+          color: '#ff6b6b'
+        }}>❌</div>
         <h2 style={{ color: '#ff6b6b', marginBottom: '0.5rem' }}>
           Profile Load Error
         </h2>
@@ -248,9 +317,26 @@ const Dashboard = () => {
             >
               ← Home
             </button>
-            <h1 style={{ margin: 0, color: '#4ecdc4', fontSize: '1.8rem', fontWeight: 'bold' }}>
-              🎨 CraftAI Studio
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '0px',
+                padding: '0px',
+                margin: '0px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontSize: '1.9rem',
+                fontWeight: 'bold'
+              }}>
+                🎨
+              </div>
+              <h1 style={{ margin: 0, color: '#4ecdc4', fontSize: '1.8rem', fontWeight: 'bold' }}>
+                KraftHouse
+              </h1>
+            </div>
             <div style={{
               backgroundColor: '#e8f8f6',
               color: '#4ecdc4',
@@ -544,7 +630,7 @@ const Dashboard = () => {
             <div style={{
               marginTop: '2rem',
               padding: '1.5rem',
-              backgroundColor: 'linear-gradient(135deg, #f8f9fa, #e9ecef)',
+              background: 'linear-gradient(135deg, #f8f9fa, #e9ecef)',
               borderRadius: '10px',
               border: '1px solid #e9ecef'
             }}>
@@ -654,6 +740,9 @@ const Dashboard = () => {
                   postsLoading={postsLoading}
                   onPostCreate={handlePostCreate}
                   onPostsRefresh={loadUserPosts}
+                  onLike={handleLike}
+                  onComment={handleComment}
+                  onShare={handleShare}
                 />
               )}
 
@@ -669,6 +758,11 @@ const Dashboard = () => {
                 <UserSearch 
                   currentUser={currentUser}
                   onSearch={searchUsers}
+                  onFollow={handleFollow}
+                  onUnfollow={handleUnfollow}
+                  onLike={handleLike}
+                  onComment={handleComment}
+                  onShare={handleShare}
                 />
               )}
               
