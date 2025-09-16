@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const SignUp = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [userType, setUserType] = useState('customer');
   const [loading, setLoading] = useState(false);
@@ -17,22 +18,30 @@ const SignUp = () => {
     e.preventDefault();
     
     if (!email || !password || !displayName) {
-      setError('Please fill in all fields');
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
       return;
     }
 
     if (password.length < 6) {
-      setError('Password should be at least 6 characters');
+      setError('Password must be at least 6 characters');
       return;
     }
 
     setLoading(true);
     setError('');
     
-    const result = await signup(email, password, { displayName, userType });
+    const result = await signup(email, password, {
+      displayName,
+      userType
+    });
     
     if (result.success) {
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     } else {
       setError(result.error);
     }
@@ -40,19 +49,25 @@ const SignUp = () => {
     setLoading(false);
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignUp = async () => {
     setLoading(true);
     setError('');
     
     const result = await signInWithGoogle();
     
     if (result.success) {
-      navigate('/dashboard');
+      console.log('Google sign-up successful, navigating to dashboard');
+      navigate('/dashboard', { replace: true });
     } else {
       setError(result.error);
     }
     
     setLoading(false);
+  };
+
+  // Back button handler
+  const handleBack = () => {
+    navigate('/'); // Navigate to home page
   };
 
   return (
@@ -61,7 +76,8 @@ const SignUp = () => {
       display: 'flex', 
       alignItems: 'center', 
       justifyContent: 'center',
-      backgroundColor: '#f5f5f5'
+      backgroundColor: '#f5f5f5',
+      padding: '1rem'
     }}>
       <div style={{
         backgroundColor: 'white',
@@ -69,10 +85,35 @@ const SignUp = () => {
         borderRadius: '8px',
         boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
         width: '100%',
-        maxWidth: '400px'
+        maxWidth: '400px',
+        position: 'relative'
       }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h2 style={{ color: '#333', marginBottom: '0.5rem' }}>Join Our Community! 🎨</h2>
+        
+        {/* Back Button */}
+        <button
+          onClick={handleBack}
+          style={{
+            position: 'absolute',
+            top: '1rem',
+            left: '1rem',
+            background: 'none',
+            border: 'none',
+            fontSize: '1.2rem',
+            cursor: 'pointer',
+            color: '#4ecdc4',
+            padding: '0.5rem',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+          title="Back to Home"
+        >
+          ← Back
+        </button>
+
+        <div style={{ textAlign: 'center', marginBottom: '2rem', marginTop: '2rem' }}>
+          <h2 style={{ color: '#333', marginBottom: '0.5rem' }}>Join Us! 🚀</h2>
           <p style={{ color: '#666' }}>Create your Artisan Marketplace account</p>
         </div>
 
@@ -91,7 +132,7 @@ const SignUp = () => {
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold' }}>
-              Full Name
+              Full Name *
             </label>
             <input
               type="text"
@@ -106,12 +147,13 @@ const SignUp = () => {
               }}
               placeholder="Enter your full name"
               disabled={loading}
+              required
             />
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold' }}>
-              Email Address
+              Email Address *
             </label>
             <input
               type="email"
@@ -126,32 +168,13 @@ const SignUp = () => {
               }}
               placeholder="Enter your email"
               disabled={loading}
+              required
             />
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold' }}>
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                fontSize: '1rem'
-              }}
-              placeholder="Create a password (6+ characters)"
-              disabled={loading}
-            />
-          </div>
-
-          <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold' }}>
-              I am a:
+              Account Type
             </label>
             <select
               value={userType}
@@ -168,6 +191,48 @@ const SignUp = () => {
               <option value="customer">Customer</option>
               <option value="artisan">Artisan</option>
             </select>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold' }}>
+              Password *
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '1rem'
+              }}
+              placeholder="Enter your password"
+              disabled={loading}
+              required
+            />
+          </div>
+
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold' }}>
+              Confirm Password *
+            </label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '1rem'
+              }}
+              placeholder="Confirm your password"
+              disabled={loading}
+              required
+            />
           </div>
 
           <button
@@ -195,7 +260,7 @@ const SignUp = () => {
         </div>
 
         <button
-          onClick={handleGoogleSignIn}
+          onClick={handleGoogleSignUp}
           disabled={loading}
           style={{
             width: '100%',
@@ -210,7 +275,7 @@ const SignUp = () => {
             marginBottom: '1rem'
           }}
         >
-          🚀 Continue with Google
+          🚀 Sign up with Google
         </button>
 
         <div style={{ textAlign: 'center', marginTop: '1rem' }}>

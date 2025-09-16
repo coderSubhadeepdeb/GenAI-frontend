@@ -7,7 +7,6 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
   const { login, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
 
@@ -25,7 +24,7 @@ const Login = () => {
     const result = await login(email, password);
     
     if (result.success) {
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true }); // Replace to prevent back navigation
     } else {
       setError(result.error);
     }
@@ -40,12 +39,18 @@ const Login = () => {
     const result = await signInWithGoogle();
     
     if (result.success) {
-      navigate('/dashboard');
+      console.log('Google sign-in successful, navigating to dashboard');
+      navigate('/dashboard', { replace: true }); // Replace to prevent back navigation
     } else {
       setError(result.error);
     }
     
     setLoading(false);
+  };
+
+  // Back button handler
+  const handleBack = () => {
+    navigate('/'); // Navigate to home page
   };
 
   return (
@@ -62,9 +67,34 @@ const Login = () => {
         borderRadius: '8px',
         boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
         width: '100%',
-        maxWidth: '400px'
+        maxWidth: '400px',
+        position: 'relative'
       }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+        
+        {/* Back Button */}
+        <button
+          onClick={handleBack}
+          style={{
+            position: 'absolute',
+            top: '1rem',
+            left: '1rem',
+            background: 'none',
+            border: 'none',
+            fontSize: '1.2rem',
+            cursor: 'pointer',
+            color: '#4ecdc4',
+            padding: '0.5rem',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+          title="Back to Home"
+        >
+          ← Back
+        </button>
+
+        <div style={{ textAlign: 'center', marginBottom: '2rem', marginTop: '2rem' }}>
           <h2 style={{ color: '#333', marginBottom: '0.5rem' }}>Welcome Back! 🎨</h2>
           <p style={{ color: '#666' }}>Sign in to your Artisan Marketplace account</p>
         </div>
